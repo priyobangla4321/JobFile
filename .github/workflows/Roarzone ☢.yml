@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # ধাপ ১: বর্তমান workflow রিপো চেকআউট (JobFile)
+      # ধাপ ১: বর্তমান workflow রিপো চেকআউট (priyobangla4321/JobFile)
       - name: Checkout workflow repository (JobFile)
         uses: actions/checkout@v4
         with:
@@ -21,7 +21,7 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           path: ./workflow-repo
           
-      # ধাপ ২: টার্গেট রিপো চেকআউট (যেখানে m3u ফাইল আপডেট হবে)
+      # ধাপ ২: টার্গেট রিপো চেকআউট (sirometv/playlist - যেখানে m3u ফাইল আপডেট হবে)
       - name: Checkout playlist repository (sirometv/playlist)
         uses: actions/checkout@v4
         with:
@@ -44,10 +44,10 @@ jobs:
           # চেক করা roarzone.m3u ফাইল আছে কিনা
           if [ ! -f "roarzone.m3u" ]; then
             echo "FIRST_RUN=true" >> $GITHUB_OUTPUT
-            echo "Detected: First run (roarzone.m3u does not exist)"
+            echo "✅ Detected: First run (roarzone.m3u does not exist)"
           else
             echo "FIRST_RUN=false" >> $GITHUB_OUTPUT
-            echo "Detected: Scheduled update (roarzone.m3u exists)"
+            echo "✅ Detected: Scheduled update (roarzone.m3u exists)"
           fi
           
       - name: Fetch and update playlist
@@ -56,17 +56,27 @@ jobs:
         run: |
           # সিক্রেট থেকে প্লেলিস্ট লিংক পড়া
           if [ -z "${{ secrets.SIROMETV_ROARZONE }}" ]; then
-            echo "Error: SIROMETV_ROARZONE secret is not set"
+            echo "❌ Error: SIROMETV_ROARZONE secret is not set"
+            echo "ℹ️ Please add the secret in GitHub repository settings"
             exit 1
           fi
           
-          # প্লেলিস্ট ডাউনলোড করা (timeout সহ)
           echo "📥 Downloading playlist from secret URL..."
+          
+          # প্লেলিস্ট ডাউনলোড করা (timeout সহ)
           curl -s --max-time 30 "${{ secrets.SIROMETV_ROARZONE }}" -o temp_playlist.m3u
+          CURL_EXIT_CODE=$?
+          
+          if [ $CURL_EXIT_CODE -ne 0 ]; then
+            echo "❌ Error: Curl failed with exit code $CURL_EXIT_CODE"
+            echo "ℹ️ Trying without silent mode to see error..."
+            curl -L --max-time 30 "${{ secrets.SIROMETV_ROARZONE }}" -o temp_playlist.m3u
+            exit 1
+          fi
           
           # ফাইল এক্সিস্ট চেক
           if [ ! -s temp_playlist.m3u ]; then
-            echo "Error: Failed to download playlist or empty file"
+            echo "❌ Error: Failed to download playlist or file is empty"
             exit 1
           fi
           
@@ -75,7 +85,7 @@ jobs:
           DOWNLOAD_LINES=$(wc -l < temp_playlist.m3u)
           echo "📊 Downloaded file size: $DOWNLOAD_LINES lines"
           
-          # হেডার তৈরি করা
+          # হেডার তৈরি করা (Bangla এবং English টেক্সট ঠিক করে দেওয়া)
           echo "#EXTM3U" > roarzone.m3u
           echo "#🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।" >> roarzone.m3u
           echo "#🔴 All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source." >> roarzone.m3u
@@ -97,7 +107,7 @@ jobs:
           if [ "$LINES" -lt 10 ]; then
             echo "⚠️ Warning: Playlist seems very small ($LINES lines)"
           else
-            echo "✅ Playlist looks good with $LINES lines"
+            echo "✅ Playlist looks good with $LINES lines and $CHANNEL_COUNT channels"
           fi
           
           # টেম্প ফাইল ডিলিট
@@ -120,6 +130,12 @@ jobs:
               # পরিবর্তনের বিস্তারিত দেখান
               echo "📊 Changes summary:"
               git diff --stat roarzone.m3u
+              
+              # লাইন সংখ্যার পরিবর্তন দেখান
+              OLD_LINES=$(git show HEAD:roarzone.m3u 2>/dev/null | wc -l || echo "0")
+              NEW_LINES=$(wc -l < roarzone.m3u)
+              DIFF=$((NEW_LINES - OLD_LINES))
+              echo "📈 Line count change: $DIFF lines ($OLD_LINES → $NEW_LINES)"
             else
               echo "✅ No content changes detected"
             fi
@@ -145,16 +161,29 @@ jobs:
             COMMIT_MSG="🆗 Roarzone ☢ : 🆕 Start Done ✅ - at ${{ steps.time.outputs.formattedTime }}"
             echo "📝 First run commit message"
           else
-            COMMIT_MSG="🆗 Roarzone ☢ : 🔄 Updated Done ✅ - at ${{ steps.time.outputs.formattedTime }}"
-            echo "📝 Scheduled update commit message"
+            # ম্যানুয়াল বা স্কিডিউলড চেক
+            if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+              COMMIT_MSG="🆗 Roarzone ☢ : 🆕 Start Done ✅ - at ${{ steps.time.outputs.formattedTime }}"
+              echo "📝 Manual trigger commit message"
+            else
+              COMMIT_MSG="🆗 Roarzone ☢ : 🔄 Updated Done ✅ - at ${{ steps.time.outputs.formattedTime }}"
+              echo "📝 Scheduled update commit message"
+            fi
           fi
           
           echo "📝 Commit message: $COMMIT_MSG"
           git commit -m "$COMMIT_MSG"
           
-          echo "🚀 Pushing changes to playlist repository..."
+          echo "🚀 Pushing changes to playlist repository (sirometv/playlist)..."
           git push
+          
+          # সফল মেসেজ
           echo "✅ Playlist updated successfully!"
+          echo "📊 Final playlist stats:"
+          LINES=$(wc -l < roarzone.m3u)
+          CHANNELS=$(grep -c "^#EXTINF:-1" roarzone.m3u 2>/dev/null || echo "0")
+          echo "   - Total lines: $LINES"
+          echo "   - Total channels: $CHANNELS"
           echo "🕐 Next auto-sync in 20 minutes"
           
       - name: No changes detected
@@ -176,21 +205,26 @@ jobs:
       - name: Display run summary
         if: always()
         run: |
-          echo "=== Workflow Run Summary ==="
-          echo "Run Type: ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'Scheduled' }}"
-          echo "First Run: ${{ steps.check_first.outputs.FIRST_RUN }}"
-          echo "Changes Detected: ${{ steps.check_changes.outputs.changes_detected }}"
-          echo "Time: ${{ steps.time.outputs.formattedTime }}"
-          echo "==========================="
+          echo "=== 📋 Workflow Run Summary ==="
+          echo "📌 Run Type: ${{ github.event_name == 'workflow_dispatch' && 'Manual' || 'Scheduled' }}"
+          echo "📌 First Run: ${{ steps.check_first.outputs.FIRST_RUN }}"
+          echo "📌 Changes Detected: ${{ steps.check_changes.outputs.changes_detected }}"
+          echo "📌 Time: ${{ steps.time.outputs.formattedTime }} (Bangladesh Time)"
+          echo "================================"
           
-    - name: Success Notification
-      if: success()
-      run: |
-        echo "🎊 Roarzone ☢ workflow completed successfully!"
-        echo "📅 Next update in 20 minutes"
-        
-    - name: Failure Notification
-      if: failure()
-      run: |
-        echo "❌ Roarzone ☢ workflow failed!"
-        echo "Please check the logs for errors."
+      - name: Success Notification
+        if: success()
+        run: |
+          echo "🎊 Roarzone ☢ workflow completed successfully!"
+          echo "📅 Next update in 20 minutes"
+          echo "📁 Playlist updated in: sirometv/playlist"
+          
+      - name: Failure Notification
+        if: failure()
+        run: |
+          echo "❌ Roarzone ☢ workflow failed!"
+          echo "Please check the logs for errors."
+          echo "Common issues:"
+          echo "  - PAT_TOKEN secret not set correctly"
+          echo "  - SIROMETV_ROARZONE secret not set or invalid URL"
+          echo "  - Network issues downloading playlist"
