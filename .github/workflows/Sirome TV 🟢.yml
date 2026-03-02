@@ -24,7 +24,7 @@ jobs:
     - name: Checkout target playlist repository
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.PLAYLIST_PAT }}
+        token: ${{ secrets.PAT_TOKEN }}
         repository: sirometv/playlist
         path: playlist-repo
         fetch-depth: 0
