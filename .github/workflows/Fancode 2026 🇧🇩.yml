@@ -1,0 +1,145 @@
+name: Fancode 2026 🇧🇩
+
+on:
+  schedule:
+    # Runs every 20 minutes
+    - cron: '*/20 * * * *'
+  workflow_dispatch:  # Allows manual trigger from the Actions tab
+
+env:
+  SOURCE_URL: ${{ secrets.Fancode_2026 }}  # Your secret containing the source playlist URL
+  TARGET_REPO: sirometv/playlist           # IMPORTANT: Verify this is the correct target repo
+  TARGET_BRANCH: main
+  TARGET_PATH: fancodeBD.m3u
+  # Group titles to filter (separated by pipe '|' for regex)
+  FILTER_GROUPS: 'Cricket|Football|Golf|Hockey'
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+    # Grant GITHUB_TOKEN write permissions to push to the target repo
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Target Repository (sirometv/playlist)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          # Uses a Personal Access Token (PAT) stored as a secret. 
+          # This token needs 'repo' scope for the target repository.
+          token: ${{ secrets.WORKFLOW_PAT }}
+          ref: ${{ env.TARGET_BRANCH }}
+          path: target-repo
+
+      - name: Fetch and Process Source Playlist
+        run: |
+          echo "📥 Fetching source playlist from secret URL..."
+          # Fetch the source playlist using the secret URL
+          curl -s -L "${{ env.SOURCE_URL }}" > source_playlist.m3u
+
+          # Check if download was successful
+          if [ ! -s source_playlist.m3u ]; then
+            echo "❌ Failed to download source playlist or file is empty!"
+            exit 1
+          fi
+          
+          echo "🔍 Filtering for groups: ${{ env.FILTER_GROUPS }}"
+          
+          # Process the playlist: Find each #EXTINF line and its following URL
+          # Using awk for reliable parsing
+          awk -v groups="${{ env.FILTER_GROUPS }}" '
+          BEGIN {
+            # Initialize variables
+            split(groups, group_arr, "|");
+            # Build regex pattern for matching group-title (case-insensitive)
+            group_pattern = "";
+            for (i in group_arr) {
+              if (group_pattern != "") group_pattern = group_pattern "|";
+              group_pattern = group_pattern group_arr[i];
+            }
+            # print "Group pattern: " group_pattern > "/dev/stderr"
+            match_found = 0;
+            extinf_line = "";
+          }
+          
+          # Check if line starts with #EXTINF:-1 and contains group-title
+          /^#EXTINF:-1.*group-title="/ {
+            extinf_line = $0;
+            # Check if the line contains any of our desired groups
+            for (i in group_arr) {
+              if (tolower(extinf_line) ~ tolower(group_arr[i]) "\"") {
+                match_found = 1;
+                break;
+              }
+            }
+            next;
+          }
+          
+          # If we have a matching extinf line and this line is a URL (does not start with #)
+          match_found == 1 && !/^#/ && NF > 0 {
+            # Print the extinf line and the URL with two blank lines after
+            print extinf_line;
+            print $0;
+            print "";  # Blank line 1
+            print "";  # Blank line 2
+            match_found = 0;
+            extinf_line = "";
+            next;
+          }
+          
+          # Reset match_found if we encounter another extinf or non-matching line without a URL
+          /^#EXTINF/ || /^#EXTM3U/ {
+            match_found = 0;
+            extinf_line = "";
+          }
+          
+          END {
+            # Clean exit
+          }
+          ' source_playlist.m3u > filtered_entries.txt
+          
+          echo "✅ Filtering complete. $(grep -c '^#EXTINF' filtered_entries.txt) entries found."
+
+      - name: Generate Final Playlist with Header
+        run: |
+          # Generate Bangladesh time for the header
+          BDT_TIME=$(TZ=Asia/Dhaka date +"%I:%M:%S%p - %d-%m-%Y")
+          
+          # Create the new playlist file with header
+          cat > target-repo/${{ env.TARGET_PATH }} << 'EOF'
+          #EXTM3U
+          #🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।
+          #🔴All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.
+          EOF
+          
+          # Append the timestamp (using the generated BDT_TIME)
+          echo "#Update Time ✔️: $BDT_TIME (Bangladesh Time)" >> target-repo/${{ env.TARGET_PATH }}
+          echo "#Telegram 🔗: https://t.me/sirometv" >> target-repo/${{ env.TARGET_PATH }}
+          echo "#WEB TV 📺: https://sirometv-tv.vercel.app" >> target-repo/${{ env.TARGET_PATH }}
+          echo "" >> target-repo/${{ env.TARGET_PATH }}  # Blank line before entries
+          
+          # Append the filtered entries (which already contain the two blank lines between them)
+          cat filtered_entries.txt >> target-repo/${{ env.TARGET_PATH }}
+          
+          echo "📝 Final playlist created at target-repo/${{ env.TARGET_PATH }}"
+
+      - name: Commit and Push Changes
+        run: |
+          cd target-repo
+          
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check if there are changes to commit
+          if git diff --quiet; then
+            echo "✅ No changes in the playlist. Skipping commit."
+            exit 0
+          fi
+          
+          # Add, commit, and push the changes
+          git add ${{ env.TARGET_PATH }}
+          git commit -m "🔄 Auto-update playlist: $(date +'%Y-%m-%d %H:%M:%S BDT')"
+          git push origin ${{ env.TARGET_BRANCH }}
+          
+          echo "🚀 Playlist successfully updated in ${{ env.TARGET_REPO }}"
