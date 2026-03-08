@@ -11,7 +11,7 @@ env:
   TARGET_BRANCH: main
   TARGET_PATH: fancodeBD.m3u
   # গ্রুপের নাম কমা দিয়ে লিখুন (যেমন: Cricket, Football, Golf, Hockey)
-  FILTER_GROUPS: 'Cricket, Football, Golf, Hockey'
+  FILTER_GROUPS: 'Cricket, Football, Golf, Tennis, Hockey'
 
 jobs:
   update-playlist:
