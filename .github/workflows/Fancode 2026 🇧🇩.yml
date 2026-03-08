@@ -27,7 +27,7 @@ jobs:
           repository: ${{ env.TARGET_REPO }}
           # Uses a Personal Access Token (PAT) stored as a secret. 
           # This token needs 'repo' scope for the target repository.
-          token: ${{ secrets.WORKFLOW_PAT }}
+          token: ${{ secrets.PAT_TOKEN }}
           ref: ${{ env.TARGET_BRANCH }}
           path: target-repo
 
