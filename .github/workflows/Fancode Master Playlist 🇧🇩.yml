@@ -20,26 +20,21 @@ jobs:
         run: |
           curl -L "${{ secrets.Fancode_2026 }}" -o original.m3u
 
-      - name: Generate master playlist (fancodeBD.m3u)
+      - name: Generate master playlist (fancodeBD.m3u) with unique groups
         run: |
           python3 << 'EOF'
           import os
           import re
           import string
 
-          # ---------- ফাইলের নাম স্যানিটাইজ করার ফাংশন (আগের ওয়ার্কফ্লোর সাথে মিল রেখে) ----------
           def safe_filename(name):
-              # স্পেস সরানো
+              """গ্রুপ টাইটেল থেকে নিরাপদ ফাইলের নাম তৈরি (স্পেস সরানো, অবৈধ ক্যারেক্টার ড্যাশে)"""
               name = name.replace(' ', '')
-              # সমস্যাজনক ক্যারেক্টার ড্যাশে রূপান্তর
               problematic = r'[\\/*?:"<>|\'^]'
               name = re.sub(problematic, '-', name)
-              # শুধু অক্ষর, সংখ্যা, ড্যাশ, আন্ডারস্কোর, ডট রাখা
               allowed = set(string.ascii_letters + string.digits + '-._')
               name = ''.join(c if c in allowed else '-' for c in name)
-              # একাধিক ড্যাশ সংকুচিত করা
               name = re.sub(r'-+', '-', name)
-              # শুরু বা শেষের ড্যাশ/আন্ডারস্কোর/ডট বাদ দেওয়া
               return name.strip('-_')
 
           original_playlist = "original.m3u"
@@ -47,8 +42,9 @@ jobs:
           fancode_dir = os.path.join(repo_path, "fancode")
           master_playlist_path = os.path.join(repo_path, "fancodeBD.m3u")
 
-          # ---------- মূল প্লেলিস্ট পার্স করে group-title সংগ্রহ ----------
-          entries = []          # (সম্পূর্ণ EXTINF লাইন, group-title)
+          # মূল প্লেলিস্ট পার্স করে প্রতিটি গ্রুপ টাইটেলের জন্য একটি করে EXTINF লাইন সংগ্রহ
+          groups = {}  # key: group_title, value: (modified_extinf, tvg_id, tvg_logo, tvg_language)
+
           with open(original_playlist, 'r', encoding='utf-8') as f:
               lines = f.readlines()
 
@@ -57,33 +53,51 @@ jobs:
               line = lines[i].strip()
               if line.startswith("#EXTINF:"):
                   extinf = line
-                  # group-title এক্সট্রাক্ট
-                  group_match = re.search(r'group-title="([^"]*)"', line)
-                  if group_match:
-                      group_title = group_match.group(1)
-                      entries.append((extinf, group_title))
-                  i += 2          # পরের লাইনে URL আছে, সেটি বাদ দিচ্ছি
+                  # অ্যাট্রিবিউটগুলো এক্সট্রাক্ট
+                  tvg_id = re.search(r'tvg-id="([^"]*)"', extinf)
+                  tvg_id = tvg_id.group(1) if tvg_id else ""
+                  
+                  tvg_logo = re.search(r'tvg-logo="([^"]*)"', extinf)
+                  tvg_logo = tvg_logo.group(1) if tvg_logo else ""
+                  
+                  tvg_language = re.search(r'tvg-language="([^"]*)"', extinf)
+                  tvg_language = tvg_language.group(1) if tvg_language else ""
+                  
+                  group_title = re.search(r'group-title="([^"]*)"', extinf)
+                  group_title = group_title.group(1) if group_title else "Unknown"
+
+                  # শুধু প্রথমবার পাওয়া গ্রুপটি সংরক্ষণ করি
+                  if group_title not in groups:
+                      # EXTINF লাইনটি মডিফাই: শেষ কমার পরের অংশ "Auto" বসাই
+                      parts = extinf.rsplit(',', 1)
+                      if len(parts) == 2:
+                          new_extinf = parts[0] + ',Auto'
+                      else:
+                          new_extinf = extinf + ',Auto'  # fallback (কোনো কমা না থাকলে)
+
+                      groups[group_title] = (new_extinf, tvg_id, tvg_logo, tvg_language)
+
+                  # পরের লাইনে URL থাকবে, তা স্কিপ করি (কারণ আমরা URL ব্যবহার করব না)
+                  i += 2
               else:
                   i += 1
 
-          # ---------- মাস্টার প্লেলিস্ট তৈরি ----------
+          # মাস্টার প্লেলিস্ট তৈরি
           master_lines = ["#EXTM3U"]
-          for extinf, group_title in entries:
-              # গ্রুপ টাইটেল থেকে প্রত্যাশিত ফাইলের নাম তৈরি
+          for group_title, (extinf, tvg_id, tvg_logo, tvg_language) in groups.items():
               safe_name = safe_filename(group_title) + ".m3u8"
               file_path = os.path.join(fancode_dir, safe_name)
 
-              # ফাইলটি fancode ফোল্ডারে আছে কিনা যাচাই
               if os.path.isfile(file_path):
                   raw_url = f"https://raw.githubusercontent.com/sirometv/playlist/main/fancode/{safe_name}"
                   master_lines.append(extinf)
                   master_lines.append(raw_url)
               else:
-                  print(f"সতর্কতা: {safe_name} ফাইলটি {group_title} গ্রুপের জন্য পাওয়া যায়নি")
+                  print(f"সতর্কতা: {group_title} গ্রুপের জন্য {safe_name} ফাইলটি পাওয়া যায়নি।")
 
           content = "\n".join(master_lines) + "\n"
 
-          # ---------- পরিবর্তন থাকলে লেখা, না থাকলে এড়িয়ে যাওয়া ----------
+          # পরিবর্তন থাকলে লেখা, না থাকলে এড়িয়ে যাওয়া
           write_needed = True
           if os.path.exists(master_playlist_path):
               with open(master_playlist_path, 'r', encoding='utf-8') as f:
@@ -94,7 +108,7 @@ jobs:
           if write_needed:
               with open(master_playlist_path, 'w', encoding='utf-8') as f:
                   f.write(content)
-              print("মাস্টার প্লেলিস্ট আপডেট করা হয়েছে।")
+              print("মাস্টার প্লেলিস্ট আপডেট করা হয়েছে (প্রতি গ্রুপের জন্য একক এন্ট্রি)।")
           else:
               print("মাস্টার প্লেলিস্টে কোনো পরিবর্তন নেই।")
           EOF
@@ -108,6 +122,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Auto-update fancode master playlist"
+            git commit -m "Auto-update fancode master playlist (unique groups with Auto)"
             git push
           fi
