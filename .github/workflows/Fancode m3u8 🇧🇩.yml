@@ -2,9 +2,8 @@ name: Fancode m3u8 🇧🇩
 
 on:
   schedule:
-    # প্রতি ২০ মিনিট পর পর (cron syntax)
     - cron: '*/20 * * * *'
-  workflow_dispatch:      # ম্যানুয়ালি রান করার সুবিধা
+  workflow_dispatch:
 
 jobs:
   update-playlist:
@@ -21,7 +20,7 @@ jobs:
         run: |
           curl -L "${{ secrets.Fancode_2026 }}" -o main_playlist.m3u
 
-      - name: Process playlist and generate m3u8 files
+      - name: Process playlist and generate m3u8 files (with EXT-X-STREAM-INF)
         run: |
           python3 << 'EOF'
           import os
@@ -29,19 +28,29 @@ jobs:
           import json
           from collections import defaultdict
 
-          # ---------- পাথ নির্ধারণ ----------
+          # ---------- Known resolution mappings (bandwidth & resolution) ----------
+          RES_MAP = {
+              '240': {'bandwidth': 300000, 'resolution': '426x240'},
+              '360': {'bandwidth': 600000, 'resolution': '640x360'},
+              '480': {'bandwidth': 800000, 'resolution': '854x480'},
+              '540': {'bandwidth': 900000, 'resolution': '960x540'},
+              '720': {'bandwidth': 1500000, 'resolution': '1280x720'},
+              '1080': {'bandwidth': 3000000, 'resolution': '1920x1080'},
+              '2160': {'bandwidth': 12000000, 'resolution': '3840x2160'},
+          }
+
           playlist_file = "main_playlist.m3u"
           output_dir = "playlist-repo/fancode"
           mapping_file = os.path.join(output_dir, "mapping.json")
           os.makedirs(output_dir, exist_ok=True)
 
-          # ---------- বিদ্যমান ম্যাপিং লোড (যদি থাকে) ----------
+          # ---------- Load existing mapping ----------
           mapping = {}
           if os.path.exists(mapping_file):
               with open(mapping_file, 'r', encoding='utf-8') as f:
                   mapping = json.load(f)
 
-          # ---------- মূল প্লেলিস্ট পার্স করা ----------
+          # ---------- Parse main playlist ----------
           with open(playlist_file, 'r', encoding='utf-8') as f:
               lines = f.readlines()
 
@@ -50,14 +59,13 @@ jobs:
               "tvg_logo": "",
               "tvg_language": "",
               "group_title": "",
-              "urls": {}          # key: resolution (যেমন '240'), value: cleaned URL
+              "urls": {}          # key: resolution (e.g., '240'), value: cleaned URL
           })
 
           i = 0
           while i < len(lines):
               line = lines[i].strip()
               if line.startswith("#EXTINF:"):
-                  # EXTINF লাইন পার্স
                   tvg_id = re.search(r'tvg-id="([^"]*)"', line)
                   tvg_id = tvg_id.group(1) if tvg_id else ""
 
@@ -70,15 +78,12 @@ jobs:
                   group_title = re.search(r'group-title="([^"]*)"', line)
                   group_title = group_title.group(1) if group_title else ""
 
-                  # টাইটেল থেকে রেজুলেশন বের করা (যেমন "240p")
                   title_part = line.split(',', 1)[-1].strip()
                   res_match = re.search(r'(\d+)p', title_part)
                   resolution = res_match.group(1) if res_match else ""
 
-                  # পরের লাইনে URL থাকবে
                   if i + 1 < len(lines):
                       raw_url = lines[i+1].strip()
-                      # URL থেকে | এর পরের অংশ বাদ (user-agent ইত্যাদি)
                       clean_url = raw_url.split('|')[0].strip()
                       if tvg_id and resolution:
                           groups[tvg_id]["tvg_id"] = tvg_id
@@ -90,15 +95,11 @@ jobs:
               else:
                   i += 1
 
-          # ---------- বর্তমান tvg_id গুলোর সেট ----------
           current_ids = set(groups.keys())
-
-          # ---------- নতুন ফাইল নম্বর নির্ধারণ (বিদ্যমান গুলো অপরিবর্তিত রাখি) ----------
           existing_ids = set(mapping.keys())
           ids_to_remove = existing_ids - current_ids
           ids_to_add = current_ids - existing_ids
 
-          # বর্তমানে ব্যবহৃত ফাইল নম্বরগুলো (যেগুলো রাখছি)
           used_numbers = set()
           for tvg_id in current_ids:
               if tvg_id in mapping:
@@ -106,17 +107,14 @@ jobs:
 
           next_number = max(used_numbers) + 1 if used_numbers else 1
 
-          # ---------- নতুন ম্যাপিং তৈরি ----------
           new_mapping = {}
           for tvg_id in current_ids:
               if tvg_id in mapping:
-                  # পুরোনো নম্বর ও ডেটা রাখি (group_title আপডেট করে)
                   new_mapping[tvg_id] = mapping[tvg_id]
                   new_mapping[tvg_id]["group_title"] = groups[tvg_id]["group_title"]
                   new_mapping[tvg_id]["tvg_logo"] = groups[tvg_id]["tvg_logo"]
                   new_mapping[tvg_id]["tvg_language"] = groups[tvg_id]["tvg_language"]
               else:
-                  # নতুন tvg_id – নতুন নম্বর দিন
                   new_mapping[tvg_id] = {
                       "file": next_number,
                       "group_title": groups[tvg_id]["group_title"],
@@ -125,7 +123,7 @@ jobs:
                   }
                   next_number += 1
 
-          # ---------- যেসব tvg_id আর নেই তাদের ফাইল ডিলিট ----------
+          # Remove obsolete files
           for tvg_id in ids_to_remove:
               file_num = mapping[tvg_id]["file"]
               file_path = os.path.join(output_dir, f"{file_num}.m3u8")
@@ -133,26 +131,34 @@ jobs:
                   os.remove(file_path)
                   print(f"Removed obsolete file: {file_path}")
 
-          # ---------- প্রতিটি গ্রুপের জন্য m3u8 ফাইল জেনারেট/আপডেট ----------
+          # ---------- Generate/Update each m3u8 file with EXT-X-STREAM-INF ----------
           for tvg_id, data in groups.items():
               file_num = new_mapping[tvg_id]["file"]
               file_path = os.path.join(output_dir, f"{file_num}.m3u8")
 
-              # রেজুলেশন অনুযায়ী সাজানো (240,360,540,720,1080)
+              # Sort resolutions (e.g., 240, 360, ...)
               sorted_urls = sorted(data["urls"].items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0)
 
-              lines = ["#EXTM3U"]
+              lines = ["#EXTM3U", ""]  # blank line after header (optional)
               for res, url in sorted_urls:
-                  extinf = (f'#EXTINF:-1 tvg-id="{tvg_id}" '
-                            f'tvg-logo="{data["tvg_logo"]}" '
-                            f'tvg-language="{data["tvg_language"]}" '
-                            f'group-title="{data["group_title"]}",{res}p')
-                  lines.append(extinf)
+                  # Get bandwidth & resolution from map, or use defaults if unknown
+                  if res in RES_MAP:
+                      bw = RES_MAP[res]['bandwidth']
+                      res_str = RES_MAP[res]['resolution']
+                  else:
+                      # Fallback: approximate values (you may adjust these)
+                      width = int(res) * 16 // 9
+                      bw = int(res) * 1250 * 100  # rough estimate
+                      res_str = f"{width}x{res}"
+                      print(f"Warning: no predefined mapping for {res}p, using approx: bandwidth={bw}, resolution={res_str}")
+
+                  stream_inf = f'#EXT-X-STREAM-INF:BANDWIDTH={bw},RESOLUTION={res_str}'
+                  lines.append(stream_inf)
                   lines.append(url)
+                  lines.append("")   # blank line between entries (optional)
 
-              content = "\n".join(lines) + "\n"
+              content = "\n".join(lines)
 
-              # ফাইল আগে থেকে থাকলে কন্টেন্ট তুলনা করুন
               write_needed = True
               if os.path.exists(file_path):
                   with open(file_path, 'r', encoding='utf-8') as f:
@@ -167,7 +173,7 @@ jobs:
               else:
                   print(f"No change: {file_path}")
 
-          # ---------- আপডেটেড ম্যাপিং সংরক্ষণ ----------
+          # Save updated mapping
           with open(mapping_file, 'w', encoding='utf-8') as f:
               json.dump(new_mapping, f, indent=2)
 
@@ -182,6 +188,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Auto-update fancode m3u8 files"
+            git commit -m "Auto-update fancode m3u8 files (EXT-X-STREAM-INF format)"
             git push
           fi
