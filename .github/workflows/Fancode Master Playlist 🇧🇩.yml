@@ -97,7 +97,7 @@ jobs:
                   extinf_parts.append(f'group-title="Live Event"')
                   
                   attributes = ' '.join(extinf_parts)
-                  new_extinf = f'#EXTINF:-1 {attributes},Auto'
+                  new_extinf = f'#EXTINF:-1 {attributes},Sirome TV 2022-2026'
 
                   master_lines.append(new_extinf)
                   master_lines.append(raw_url)
@@ -117,7 +117,7 @@ jobs:
           if write_needed:
               with open(master_playlist_path, 'w', encoding='utf-8') as f:
                   f.write(content)
-              print("মাস্টার প্লেলিস্ট আপডেট করা হয়েছে (group-title 'Live Event' এবং Auto)।")
+              print("মাস্টার প্লেলিস্ট আপডেট করা হয়েছে (group-title 'Live Event' এবং Sirome TV 2022-2026)।")
           else:
               print("মাস্টার প্লেলিস্টে কোনো পরিবর্তন নেই।")
           EOF
