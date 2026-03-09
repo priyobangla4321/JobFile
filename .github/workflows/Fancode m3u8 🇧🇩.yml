@@ -1,0 +1,187 @@
+name: Fancode m3u8 🇧🇩
+
+on:
+  schedule:
+    # প্রতি ২০ মিনিট পর পর (cron syntax)
+    - cron: '*/20 * * * *'
+  workflow_dispatch:      # ম্যানুয়ালি রান করার সুবিধা
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target playlist repository (sirometv/playlist)
+        uses: actions/checkout@v4
+        with:
+          repository: sirometv/playlist
+          token: ${{ secrets.PAT_TOKEN }}
+          path: playlist-repo
+
+      - name: Download main playlist from secret URL
+        run: |
+          curl -L "${{ secrets.Fancode_2026 }}" -o main_playlist.m3u
+
+      - name: Process playlist and generate m3u8 files
+        run: |
+          python3 << 'EOF'
+          import os
+          import re
+          import json
+          from collections import defaultdict
+
+          # ---------- পাথ নির্ধারণ ----------
+          playlist_file = "main_playlist.m3u"
+          output_dir = "playlist-repo/fancode"
+          mapping_file = os.path.join(output_dir, "mapping.json")
+          os.makedirs(output_dir, exist_ok=True)
+
+          # ---------- বিদ্যমান ম্যাপিং লোড (যদি থাকে) ----------
+          mapping = {}
+          if os.path.exists(mapping_file):
+              with open(mapping_file, 'r', encoding='utf-8') as f:
+                  mapping = json.load(f)
+
+          # ---------- মূল প্লেলিস্ট পার্স করা ----------
+          with open(playlist_file, 'r', encoding='utf-8') as f:
+              lines = f.readlines()
+
+          groups = defaultdict(lambda: {
+              "tvg_id": "",
+              "tvg_logo": "",
+              "tvg_language": "",
+              "group_title": "",
+              "urls": {}          # key: resolution (যেমন '240'), value: cleaned URL
+          })
+
+          i = 0
+          while i < len(lines):
+              line = lines[i].strip()
+              if line.startswith("#EXTINF:"):
+                  # EXTINF লাইন পার্স
+                  tvg_id = re.search(r'tvg-id="([^"]*)"', line)
+                  tvg_id = tvg_id.group(1) if tvg_id else ""
+
+                  tvg_logo = re.search(r'tvg-logo="([^"]*)"', line)
+                  tvg_logo = tvg_logo.group(1) if tvg_logo else ""
+
+                  tvg_language = re.search(r'tvg-language="([^"]*)"', line)
+                  tvg_language = tvg_language.group(1) if tvg_language else ""
+
+                  group_title = re.search(r'group-title="([^"]*)"', line)
+                  group_title = group_title.group(1) if group_title else ""
+
+                  # টাইটেল থেকে রেজুলেশন বের করা (যেমন "240p")
+                  title_part = line.split(',', 1)[-1].strip()
+                  res_match = re.search(r'(\d+)p', title_part)
+                  resolution = res_match.group(1) if res_match else ""
+
+                  # পরের লাইনে URL থাকবে
+                  if i + 1 < len(lines):
+                      raw_url = lines[i+1].strip()
+                      # URL থেকে | এর পরের অংশ বাদ (user-agent ইত্যাদি)
+                      clean_url = raw_url.split('|')[0].strip()
+                      if tvg_id and resolution:
+                          groups[tvg_id]["tvg_id"] = tvg_id
+                          groups[tvg_id]["tvg_logo"] = tvg_logo
+                          groups[tvg_id]["tvg_language"] = tvg_language
+                          groups[tvg_id]["group_title"] = group_title
+                          groups[tvg_id]["urls"][resolution] = clean_url
+                  i += 2
+              else:
+                  i += 1
+
+          # ---------- বর্তমান tvg_id গুলোর সেট ----------
+          current_ids = set(groups.keys())
+
+          # ---------- নতুন ফাইল নম্বর নির্ধারণ (বিদ্যমান গুলো অপরিবর্তিত রাখি) ----------
+          existing_ids = set(mapping.keys())
+          ids_to_remove = existing_ids - current_ids
+          ids_to_add = current_ids - existing_ids
+
+          # বর্তমানে ব্যবহৃত ফাইল নম্বরগুলো (যেগুলো রাখছি)
+          used_numbers = set()
+          for tvg_id in current_ids:
+              if tvg_id in mapping:
+                  used_numbers.add(mapping[tvg_id]["file"])
+
+          next_number = max(used_numbers) + 1 if used_numbers else 1
+
+          # ---------- নতুন ম্যাপিং তৈরি ----------
+          new_mapping = {}
+          for tvg_id in current_ids:
+              if tvg_id in mapping:
+                  # পুরোনো নম্বর ও ডেটা রাখি (group_title আপডেট করে)
+                  new_mapping[tvg_id] = mapping[tvg_id]
+                  new_mapping[tvg_id]["group_title"] = groups[tvg_id]["group_title"]
+                  new_mapping[tvg_id]["tvg_logo"] = groups[tvg_id]["tvg_logo"]
+                  new_mapping[tvg_id]["tvg_language"] = groups[tvg_id]["tvg_language"]
+              else:
+                  # নতুন tvg_id – নতুন নম্বর দিন
+                  new_mapping[tvg_id] = {
+                      "file": next_number,
+                      "group_title": groups[tvg_id]["group_title"],
+                      "tvg_logo": groups[tvg_id]["tvg_logo"],
+                      "tvg_language": groups[tvg_id]["tvg_language"]
+                  }
+                  next_number += 1
+
+          # ---------- যেসব tvg_id আর নেই তাদের ফাইল ডিলিট ----------
+          for tvg_id in ids_to_remove:
+              file_num = mapping[tvg_id]["file"]
+              file_path = os.path.join(output_dir, f"{file_num}.m3u8")
+              if os.path.exists(file_path):
+                  os.remove(file_path)
+                  print(f"Removed obsolete file: {file_path}")
+
+          # ---------- প্রতিটি গ্রুপের জন্য m3u8 ফাইল জেনারেট/আপডেট ----------
+          for tvg_id, data in groups.items():
+              file_num = new_mapping[tvg_id]["file"]
+              file_path = os.path.join(output_dir, f"{file_num}.m3u8")
+
+              # রেজুলেশন অনুযায়ী সাজানো (240,360,540,720,1080)
+              sorted_urls = sorted(data["urls"].items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0)
+
+              lines = ["#EXTM3U"]
+              for res, url in sorted_urls:
+                  extinf = (f'#EXTINF:-1 tvg-id="{tvg_id}" '
+                            f'tvg-logo="{data["tvg_logo"]}" '
+                            f'tvg-language="{data["tvg_language"]}" '
+                            f'group-title="{data["group_title"]}",{res}p')
+                  lines.append(extinf)
+                  lines.append(url)
+
+              content = "\n".join(lines) + "\n"
+
+              # ফাইল আগে থেকে থাকলে কন্টেন্ট তুলনা করুন
+              write_needed = True
+              if os.path.exists(file_path):
+                  with open(file_path, 'r', encoding='utf-8') as f:
+                      old_content = f.read()
+                  if old_content == content:
+                      write_needed = False
+
+              if write_needed:
+                  with open(file_path, 'w', encoding='utf-8') as f:
+                      f.write(content)
+                  print(f"Updated: {file_path}")
+              else:
+                  print(f"No change: {file_path}")
+
+          # ---------- আপডেটেড ম্যাপিং সংরক্ষণ ----------
+          with open(mapping_file, 'w', encoding='utf-8') as f:
+              json.dump(new_mapping, f, indent=2)
+
+          EOF
+
+      - name: Commit and push changes
+        run: |
+          cd playlist-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add fancode/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-update fancode m3u8 files"
+            git push
+          fi
