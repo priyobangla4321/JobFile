@@ -22,7 +22,7 @@ jobs:
           SOURCE_URL="${{ secrets.Fancode_2026 }}"
           curl -L "$SOURCE_URL" -o source.m3u
 
-      - name: Process playlist (filter 480p & 1080p, set group-title="Live Event", strip User-Agent)
+      - name: Process playlist (filter 480p & 1080p, set group-title="Live Event", strip User-Agent, trim spaces)
         run: |
           # আউটপুট ফাইল শুরু
           echo '#EXTM3U' > fancodeBD.m3u
@@ -44,8 +44,10 @@ jobs:
               in_extinf=1
             elif [[ $in_extinf -eq 1 ]]; then
               raw_url="$line"
+              # লাইন থেকে শুরু ও শেষের স্পেস মুছে ফেলা
+              trimmed_url="$(echo -e "${raw_url}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
               # ইউজার-এজেন্ট অংশ বাদ দেওয়া (| চিহ্নের পরের সব কিছু)
-              clean_url="${raw_url%%|*}"
+              clean_url="${trimmed_url%%|*}"
               
               # শুধুমাত্র 480p/480.m3u8 এবং 1080p/1080.m3u8 লিংক নিবো
               if [[ $clean_url == *"/480p.m3u8"* || $clean_url == *"/480.m3u8"* || $clean_url == *"/1080p.m3u8"* || $clean_url == *"/1080.m3u8"* ]]; then
