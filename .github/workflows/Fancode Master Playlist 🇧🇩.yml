@@ -21,7 +21,7 @@ jobs:
         run: |
           curl -L "${{ secrets.Fancode_2026 }}" -o original.m3u
 
-      - name: Generate master playlist (fancodeBD.m3u) with unique groups
+      - name: Generate master playlist (fancodeBD.m3u) with group-title="Live Event"
         run: |
           python3 << 'EOF'
           import os
@@ -43,8 +43,8 @@ jobs:
           fancode_dir = os.path.join(repo_path, "fancode")
           master_playlist_path = os.path.join(repo_path, "fancodeBD.m3u")
 
-          # মূল প্লেলিস্ট পার্স করে প্রতিটি গ্রুপ টাইটেলের জন্য একটি করে EXTINF লাইন সংগ্রহ
-          groups = {}  # key: group_title, value: (modified_extinf, tvg_id, tvg_logo, tvg_language)
+          # মূল প্লেলিস্ট পার্স করে প্রতিটি গ্রুপ টাইটেলের জন্য একটি করে এন্ট্রি তৈরি
+          groups = {}  # key: group_title (original), value: (tvg_id, tvg_logo, tvg_language)
 
           with open(original_playlist, 'r', encoding='utf-8') as f:
               lines = f.readlines()
@@ -69,14 +69,7 @@ jobs:
 
                   # শুধু প্রথমবার পাওয়া গ্রুপটি সংরক্ষণ করি
                   if group_title not in groups:
-                      # EXTINF লাইনটি মডিফাই: শেষ কমার পরের অংশ "Auto" বসাই
-                      parts = extinf.rsplit(',', 1)
-                      if len(parts) == 2:
-                          new_extinf = parts[0] + ',Auto'
-                      else:
-                          new_extinf = extinf + ',Auto'  # fallback (কোনো কমা না থাকলে)
-
-                      groups[group_title] = (new_extinf, tvg_id, tvg_logo, tvg_language)
+                      groups[group_title] = (tvg_id, tvg_logo, tvg_language)
 
                   # পরের লাইনে URL থাকবে, তা স্কিপ করি (কারণ আমরা URL ব্যবহার করব না)
                   i += 2
@@ -85,13 +78,28 @@ jobs:
 
           # মাস্টার প্লেলিস্ট তৈরি
           master_lines = ["#EXTM3U"]
-          for group_title, (extinf, tvg_id, tvg_logo, tvg_language) in groups.items():
+          for group_title, (tvg_id, tvg_logo, tvg_language) in groups.items():
               safe_name = safe_filename(group_title) + ".m3u8"
               file_path = os.path.join(fancode_dir, safe_name)
 
               if os.path.isfile(file_path):
                   raw_url = f"https://raw.githubusercontent.com/sirometv/playlist/main/fancode/{safe_name}"
-                  master_lines.append(extinf)
+
+                  # নতুন EXTINF লাইন তৈরি: group-title="Live Event" বসিয়ে, শেষে Auto যোগ
+                  extinf_parts = []
+                  if tvg_id:
+                      extinf_parts.append(f'tvg-id="{tvg_id}"')
+                  if tvg_logo:
+                      extinf_parts.append(f'tvg-logo="{tvg_logo}"')
+                  if tvg_language:
+                      extinf_parts.append(f'tvg-language="{tvg_language}"')
+                  # group-title সবসময় "Live Event"
+                  extinf_parts.append(f'group-title="Live Event"')
+                  
+                  attributes = ' '.join(extinf_parts)
+                  new_extinf = f'#EXTINF:-1 {attributes},Auto'
+
+                  master_lines.append(new_extinf)
                   master_lines.append(raw_url)
               else:
                   print(f"সতর্কতা: {group_title} গ্রুপের জন্য {safe_name} ফাইলটি পাওয়া যায়নি।")
@@ -109,7 +117,7 @@ jobs:
           if write_needed:
               with open(master_playlist_path, 'w', encoding='utf-8') as f:
                   f.write(content)
-              print("মাস্টার প্লেলিস্ট আপডেট করা হয়েছে (প্রতি গ্রুপের জন্য একক এন্ট্রি)।")
+              print("মাস্টার প্লেলিস্ট আপডেট করা হয়েছে (group-title 'Live Event' এবং Auto)।")
           else:
               print("মাস্টার প্লেলিস্টে কোনো পরিবর্তন নেই।")
           EOF
@@ -123,6 +131,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Auto-update fancode master playlist (unique groups with Auto)"
+            git commit -m "Auto-update fancode master playlist (Live Event group)"
             git push
           fi
