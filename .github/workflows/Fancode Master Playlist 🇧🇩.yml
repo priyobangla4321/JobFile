@@ -1,3 +1,4 @@
+#এটির কাজ হচ্ছে সিক্রেট Fancode_2026 থেকে Extinf কপি করবে আর Fancode থেকে m3u8 লিংক কালেক্ট করবে।
 name: Fancode Master Playlist 🇧🇩
 
 on:
