@@ -1,0 +1,160 @@
+name: Fancode m3u8 🇧🇩
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target playlist repository (sirometv/playlist)
+        uses: actions/checkout@v4
+        with:
+          repository: sirometv/playlist
+          token: ${{ secrets.PAT_TOKEN }}
+          path: playlist-repo
+
+      - name: Download main playlist from secret URL
+        run: |
+          curl -L "${{ secrets.Fancode_2026 }}" -o main_playlist.m3u
+
+      - name: Process playlist and generate m3u8 files by group-title
+        run: |
+          python3 << 'EOF'
+          import os
+          import re
+          import string
+          from collections import defaultdict
+
+          # Resolution mapping
+          RES_MAP = {
+              '240': {'bandwidth': 300000, 'resolution': '426x240'},
+              '360': {'bandwidth': 600000, 'resolution': '640x360'},
+              '480': {'bandwidth': 800000, 'resolution': '854x480'},
+              '540': {'bandwidth': 900000, 'resolution': '960x540'},
+              '720': {'bandwidth': 1500000, 'resolution': '1280x720'},
+              '1080': {'bandwidth': 3000000, 'resolution': '1920x1080'},
+              '2160': {'bandwidth': 12000000, 'resolution': '3840x2160'},
+          }
+
+          def safe_filename(name):
+              # Remove spaces
+              name = name.replace(' ', '')
+              # Replace problematic characters with dash
+              problematic = r'[\\/*?:"<>|\'^]'
+              name = re.sub(problematic, '-', name)
+              # Keep only letters, digits, dash, underscore, dot
+              allowed = set(string.ascii_letters + string.digits + '-._')
+              name = ''.join(c if c in allowed else '-' for c in name)
+              # Collapse multiple dashes
+              name = re.sub(r'-+', '-', name)
+              # Remove leading/trailing dashes/underscores/dots
+              name = name.strip('-_')
+              return name
+
+          playlist_file = "main_playlist.m3u"
+          output_dir = "playlist-repo/fancode"
+          os.makedirs(output_dir, exist_ok=True)
+
+          # Parse playlist
+          with open(playlist_file, 'r', encoding='utf-8') as f:
+              lines = f.readlines()
+
+          groups = defaultdict(lambda: {
+              "tvg_id": "",
+              "tvg_logo": "",
+              "tvg_language": "",
+              "group_title": "",
+              "urls": {}
+          })
+
+          i = 0
+          while i < len(lines):
+              line = lines[i].strip()
+              if line.startswith("#EXTINF:"):
+                  tvg_id = re.search(r'tvg-id="([^"]*)"', line)
+                  tvg_id = tvg_id.group(1) if tvg_id else ""
+
+                  tvg_logo = re.search(r'tvg-logo="([^"]*)"', line)
+                  tvg_logo = tvg_logo.group(1) if tvg_logo else ""
+
+                  tvg_language = re.search(r'tvg-language="([^"]*)"', line)
+                  tvg_language = tvg_language.group(1) if tvg_language else ""
+
+                  group_title = re.search(r'group-title="([^"]*)"', line)
+                  group_title = group_title.group(1) if group_title else "Unknown"
+
+                  title_part = line.split(',', 1)[-1].strip()
+                  res_match = re.search(r'(\d+)p', title_part)
+                  resolution = res_match.group(1) if res_match else ""
+
+                  if i + 1 < len(lines):
+                      raw_url = lines[i+1].strip()
+                      clean_url = raw_url.split('|')[0].strip()
+                      if group_title and resolution:
+                          key = group_title
+                          groups[key]["tvg_id"] = tvg_id
+                          groups[key]["tvg_logo"] = tvg_logo
+                          groups[key]["tvg_language"] = tvg_language
+                          groups[key]["group_title"] = group_title
+                          groups[key]["urls"][resolution] = clean_url
+                  i += 2
+              else:
+                  i += 1
+
+          # Clean output directory: remove all old .m3u8 files
+          for fname in os.listdir(output_dir):
+              if fname.endswith('.m3u8'):
+                  os.remove(os.path.join(output_dir, fname))
+
+          # Generate new files per group
+          for group_title, data in groups.items():
+              if not data["urls"]:
+                  continue
+
+              safe_name = safe_filename(group_title) + ".m3u8"
+              file_path = os.path.join(output_dir, safe_name)
+
+              # Sort resolutions (e.g., 240, 360, ...)
+              sorted_urls = sorted(data["urls"].items(), key=lambda x: int(x[0]) if x[0].isdigit() else 0)
+
+              lines = ["#EXTM3U", ""]
+              for res, url in sorted_urls:
+                  if res in RES_MAP:
+                      bw = RES_MAP[res]['bandwidth']
+                      res_str = RES_MAP[res]['resolution']
+                  else:
+                      # fallback approximation
+                      width = int(res) * 16 // 9
+                      bw = int(res) * 1250 * 100
+                      res_str = f"{width}x{res}"
+                      print(f"Warning: no mapping for {res}p, using approx")
+
+                  stream_inf = f'#EXT-X-STREAM-INF:BANDWIDTH={bw},RESOLUTION={res_str}'
+                  lines.append(stream_inf)
+                  lines.append(url)
+                  lines.append("")
+
+              content = "\n".join(lines)
+
+              with open(file_path, 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print(f"Generated: {file_path}")
+
+          print("All files regenerated.")
+          EOF
+
+      - name: Commit and push changes
+        run: |
+          cd playlist-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add fancode/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-update fancode m3u8 files by group-title"
+            git push
+          fi
