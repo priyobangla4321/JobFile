@@ -10,20 +10,19 @@ jobs:
   update-playlist:
     runs-on: ubuntu-latest
     steps:
-      # JobFile রেপো চেকআউট (প্রয়োজন নেই, তবে রাখা যায়)
       - name: Checkout JobFile repo (optional)
         uses: actions/checkout@v4
         with:
           repository: priyobangla4321/JobFile
           token: ${{ secrets.PAT_TOKEN }}
-          path: jobfile-repo   # আলাদা ফোল্ডারে রাখা হবে, কাজে লাগবে না
+          path: jobfile-repo
 
       - name: Fetch source playlist
         run: |
           SOURCE_URL="${{ secrets.Fancode_2026 }}"
           curl -L "$SOURCE_URL" -o source.m3u
 
-      - name: Process playlist (filter 480p & 1080p, set group-title="Live Event")
+      - name: Process playlist (filter 480p & 1080p, set group-title="Live Event", strip User-Agent)
         run: |
           # আউটপুট ফাইল শুরু
           echo '#EXTM3U' > fancodeBD.m3u
@@ -36,7 +35,7 @@ jobs:
           echo '#WEB TV 📺: https://sirometv-tv.vercel.app' >> fancodeBD.m3u
           echo '' >> fancodeBD.m3u   # একটি ফাঁকা লাইন
 
-          # source.m3u পার্স করা (ধরে নিচ্ছি প্রতিটি এন্ট্রি: #EXTINF লাইন + URL লাইন)
+          # source.m3u পার্স করা (প্রতি এন্ট্রি: #EXTINF লাইন + URL লাইন)
           in_extinf=0
           extinf_line=""
           while IFS= read -r line; do
@@ -44,14 +43,17 @@ jobs:
               extinf_line="$line"
               in_extinf=1
             elif [[ $in_extinf -eq 1 ]]; then
-              url="$line"
+              raw_url="$line"
+              # ইউজার-এজেন্ট অংশ বাদ দেওয়া (| চিহ্নের পরের সব কিছু)
+              clean_url="${raw_url%%|*}"
+              
               # শুধুমাত্র 480p/480.m3u8 এবং 1080p/1080.m3u8 লিংক নিবো
-              if [[ $url == *"/480p.m3u8"* || $url == *"/480.m3u8"* || $url == *"/1080p.m3u8"* || $url == *"/1080.m3u8"* ]]; then
+              if [[ $clean_url == *"/480p.m3u8"* || $clean_url == *"/480.m3u8"* || $clean_url == *"/1080p.m3u8"* || $clean_url == *"/1080.m3u8"* ]]; then
                 # group-title পরিবর্তন করে "Live Event"
                 new_extinf=$(echo "$extinf_line" | sed 's/group-title="[^"]*"/group-title="Live Event"/')
                 echo "$new_extinf" >> fancodeBD.m3u
-                echo "$url" >> fancodeBD.m3u
-                echo "" >> fancodeBD.m3u   # প্রতিটি এন্ট্রির পর একটি ফাঁকা লাইন (আপনার নির্দেশ অনুযায়ী)
+                echo "$clean_url" >> fancodeBD.m3u
+                echo "" >> fancodeBD.m3u   # প্রতিটি এন্ট্রির পর একটি ফাঁকা লাইন
               fi
               in_extinf=0
             fi
@@ -72,5 +74,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add fancodeBD.m3u
           # পরিবর্তন থাকলেই শুধু commit ও push করবে
-          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-update fancodeBD.m3u"
+          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-update fancodeBD.m3u [skip ci]"
           git push
