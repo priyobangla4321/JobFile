@@ -2,7 +2,7 @@ name: Sirome TV Sports 🔵
 
 on:
   schedule:
-    - cron: '*/20 * * * *'  # 0,20,40 মিনিটে
+    - cron: '*/23 * * * *'  # 0,20,40 মিনিটে
   workflow_dispatch:
 
 permissions:
