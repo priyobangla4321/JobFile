@@ -1,0 +1,189 @@
+name: Fancode JSON Data ✔️
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'  # 0,20,40 মিনিটে
+  workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
+
+permissions:
+  contents: write
+
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout workflow repository (JobFile)
+      uses: actions/checkout@v4
+      with:
+        repository: priyobangla4321/JobFile
+        token: ${{ secrets.PAT_TOKEN }}
+        path: ./workflow-repo
+
+    - name: Checkout playlist repository (sirometv/playlist)
+      uses: actions/checkout@v4
+      with:
+        repository: sirometv/playlist
+        token: ${{ secrets.PAT_TOKEN }}
+        path: ./playlist-repo
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: pip install requests pytz
+
+    - name: Download and update JSON
+      env:
+        # সঠিক সিক্রেট নাম ব্যবহার করা হয়েছে
+        JSON_URL: ${{ secrets.FANCODE_SIROME }}
+      run: |
+        import os
+        import requests
+        import json
+        from datetime import datetime
+        import pytz
+        import shutil
+        
+        print("🚀 Starting JSON update process...")
+        
+        # env variable থেকে URL নেয়া
+        json_url = os.environ.get('JSON_URL')
+        
+        if not json_url:
+            print("❌ Error: JSON_URL environment variable is empty!")
+            print("Please check if FANCODE_SIROME secret is properly set")
+            exit(1)
+        
+        print(f"📥 Source URL: {json_url}")
+        
+        try:
+            print("⬇️ Downloading JSON data...")
+            response = requests.get(json_url, timeout=10)
+            response.raise_for_status()
+            original_data = response.json()
+            print("✅ Successfully downloaded JSON data")
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Download failed: {e}")
+            exit(1)
+        except json.JSONDecodeError as e:
+            print(f"❌ Invalid JSON format: {e}")
+            exit(1)
+        
+        # matches ডাটা নেয়া
+        matches = original_data.get("matches", [])
+        
+        # প্রতিটি match-এর adfree_url পরিবর্তন করা
+        modified_matches = []
+        replaced_count = 0
+        
+        for match in matches:
+            if isinstance(match, dict) and "adfree_url" in match:
+                original_url = match.get("adfree_url", "")
+                if original_url and "https://in" in original_url:
+                    # https://in কে https://bd তে পরিবর্তন
+                    modified_url = original_url.replace("https://in", "https://bd")
+                    match["adfree_url"] = modified_url
+                    replaced_count += 1
+                    print(f"🔄 Replaced URL: {original_url[:50]}... → {modified_url[:50]}...")
+            
+            modified_matches.append(match)
+        
+        print(f"✅ Total URLs replaced: {replaced_count}")
+        
+        # বাংলাদেশ টাইমজোন সেট করা
+        bd_timezone = pytz.timezone('Asia/Dhaka')
+        current_time = datetime.now(bd_timezone)
+        
+        # ফরম্যাট করা সময় (AM/PM সহ)
+        formatted_time = current_time.strftime("%I:%M:%S %p %d-%m-%Y")
+        print(f"🕒 Bangladesh time: {formatted_time}")
+        
+        # নতুন JSON তৈরি
+        updated_data = {
+            "name": "Fancode Live Matches Data in Json",
+            "telegram": "https://t.me/sirometv",
+            "last update time": formatted_time,
+            "webtv": "https://sirometv-tv.vercel.app",
+            "matches": modified_matches
+        }
+        
+        # playlist-repo ফোল্ডারে JSON ফাইল হিসেবে সেভ করা
+        output_file = 'playlist-repo/fancode.json'
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(updated_data, f, indent=4, ensure_ascii=False)
+        
+        print(f"✅ JSON updated successfully at {formatted_time}")
+        
+        # ফাইল চেক করা
+        if os.path.exists(output_file):
+            file_size = os.path.getsize(output_file)
+            print(f"📄 File created: {output_file} ({file_size} bytes)")
+            
+            # প্রিভিউ
+            with open(output_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                # adfree_url আছে এমন লাইনগুলো খুঁজে দেখানো
+                print("🔍 Checking adfree_url replacements:")
+                for i, line in enumerate(lines[:50]):  # প্রথম ৫০ লাইন চেক
+                    if '"adfree_url":' in line:
+                        print(f"   Line {i+1}: {line.strip()}")
+        else:
+            print("❌ Error: File not created!")
+            exit(1)
+      shell: python
+
+    - name: Check changes
+      working-directory: ./playlist-repo
+      run: |
+        echo "🔍 Checking git status in playlist-repo..."
+        git status
+        echo ""
+        echo "📊 File diff:"
+        git diff fancode.json || true
+        
+        echo ""
+        echo "🔍 Checking adfree_url in file:"
+        grep -n "adfree_url" fancode.json | head -10
+
+    - name: Commit and push changes to playlist repo
+      working-directory: ./playlist-repo
+      run: |
+        echo "💾 Committing changes to playlist repository..."
+        
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        
+        git add fancode.json
+        
+        # পরিবর্তন হয়েছে কিনা চেক করা
+        if git diff --staged --quiet; then
+          echo "🟡 No changes to commit (file is identical)"
+        else
+          CURRENT_TIME=$(date +'%I:%M:%S %p %d-%m-%Y')
+          
+          # শিডিউলড আপডেট নাকি ম্যানুয়াল চেক করা
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            COMMIT_MSG="🆗 FANCODE 🤖 JSON 🆗 Started at $CURRENT_TIME"
+          else
+            COMMIT_MSG="🆗 FANCODE 🤖 JSON 🔄 Updated Done ✅ at $CURRENT_TIME"
+          fi
+          
+          git commit -m "$COMMIT_MSG"
+          git push origin main
+          echo "✅ Changes committed and pushed successfully to playlist repository!"
+          
+          # লিঙ্ক দেখানো
+          echo ""
+          echo "🌐 Updated file available at:"
+          echo "https://github.com/sirometv/playlist/blob/main/fancode.json"
+        fi
+
+    - name: Clean up
+      if: always()
+      run: |
+        echo "🧹 Cleaning up temporary files..."
+        rm -rf workflow-repo
+        rm -rf playlist-repo
