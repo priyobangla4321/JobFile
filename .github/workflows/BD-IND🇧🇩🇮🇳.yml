@@ -34,13 +34,18 @@ jobs:
           OUTPUT_FILE="$GITHUB_WORKSPACE/playlist-repo/Bangla-BD-IND.m3u"
           CHANNELS_FILE="channels.txt"
 
-          # ---------- Read channel list ----------
+          # ---------- Read channel list (handle spaces properly) ----------
+          CHANNELS=()
           if [ -f "$CHANNELS_FILE" ]; then
-            mapfile -t CHANNELS < "$CHANNELS_FILE"
-            # Remove empty lines and trim whitespace
-            CHANNELS=($(printf "%s\n" "${CHANNELS[@]}" | awk 'NF {gsub(/^[ \t]+|[ \t]+$/, ""); print}'))
+            while IFS= read -r line || [ -n "$line" ]; do
+              # Remove leading/trailing whitespace
+              line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+              # Skip empty lines
+              [ -n "$line" ] && CHANNELS+=("$line")
+            done < "$CHANNELS_FILE"
           else
             echo "⚠️ channels.txt not found. Using default list."
+            # ---------- Default channel list (all quotes fixed) ----------
             CHANNELS=(
               "BTV National"
               "BTV CTG"
@@ -146,7 +151,7 @@ jobs:
               "National Geo Abu Dhabi" 
               "Animal Planet HD" 
               "BBC Earth" 
-              "BBC Four UK 
+              "BBC Four UK" 
               "Discovery Kids" 
               "Cartoon Network" 
               "Jungle Book" 
@@ -260,7 +265,8 @@ jobs:
           fi
 
           # ---------- Build blocks for output ----------
-          RED_LINE=$(printf '🔴%.0s' {1..50})   # 50 red circles
+          # Group separator: a line with hash and 50 red circles (as per your instruction)
+          RED_LINE="#$(printf '🔴%.0s' {1..50})"
           blocks=()
           last_group=""
 
@@ -271,9 +277,9 @@ jobs:
             if [[ -n "${entry_map[$norm_channel]}" ]]; then
               # Channel found
               group="${group_map[$norm_channel]}"
-              # Insert group separator if needed
+              # Insert group separator if group changed and not first block
               if [ ${#blocks[@]} -gt 0 ] && [ "$group" != "$last_group" ]; then
-                blocks+=("$RED_LINE"$'\n'"$RED_LINE"$'\n')
+                blocks+=("$RED_LINE"$'\n')
               fi
               # Add entry block (already ends with newline)
               blocks+=("${entry_map[$norm_channel]}")
@@ -296,7 +302,7 @@ jobs:
             echo   # one blank line after header
           } > "$OUTPUT_FILE"
 
-          # Append blocks with two blank lines between them
+          # Append blocks with two blank lines between them (optional, you can reduce if needed)
           for i in "${!blocks[@]}"; do
             printf "%s" "${blocks[$i]}" >> "$OUTPUT_FILE"
             if [ $i -lt $((${#blocks[@]}-1)) ]; then
