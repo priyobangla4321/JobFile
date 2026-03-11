@@ -24,6 +24,12 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           path: playlist-repo
 
+      # Explicitly set Node.js 24 (though ubuntu-latest already uses it)
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Generate new Bangla-BD-IND.m3u
         run: |
           set -e
@@ -265,8 +271,8 @@ jobs:
           fi
 
           # ---------- Build blocks for output ----------
-          # Group separator: a line with hash and 50 red circles (as per your instruction)
-          RED_LINE="#$(printf '🔴%.0s' {1..50})"
+          # Group separator: a line with hash and 5 red circles (as per your instruction)
+          RED_LINE="#$(printf '🔴%.0s' {1..5})"
           blocks=()
           last_group=""
 
