@@ -2,207 +2,176 @@ name: BD-IND🇧🇩🇮🇳
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # প্রতি ৩০ মিনিট
-  workflow_dispatch:          # ম্যানুয়াল ট্রিগার
+    # Every 30 minutes
+    - cron: '*/30 * * * *'
+  repository_dispatch:
+    types: [update-sirometv-m3u]
+  workflow_dispatch:      # Allow manual trigger
 
 jobs:
-  build:
+  update-playlist:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout target repository (sirometv/playlist)
+      - name: Checkout JobFile repo (to get channels.txt)
+        uses: actions/checkout@v4
+        with:
+          path: jobfile-repo
+
+      - name: Checkout playlist repo (sirometv/playlist)
         uses: actions/checkout@v4
         with:
           repository: sirometv/playlist
           token: ${{ secrets.PAT_TOKEN }}
           path: playlist-repo
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Generate playlist
-        id: generate
-        env:
-          TZ: Asia/Dhaka
-          # আপনার চ্যানেলের নাম এখানে দিন (প্রতি লাইনে একটি)
-          CHANNEL_LIST: |
-            BTV National
-            BTV CTG
-            BTV NEWS
-            Sangsad TV
-            Islamic TV
-            Jamuna TV
-            Somoy TV
-            Ekushey TV
-            NTV BD
-            NTV-Europe
-            NTV UK
-            Channel 24
-            Star Jalsha
-            Star-Jalsha Movies
-            Zee Bangla
+      - name: Generate new Bngla-BD-IND.m3u
         run: |
-          cd playlist-repo
+          set -e
+          cd jobfile-repo
 
-          # বাংলাদেশ সময়
-          CURRENT_TIME=$(TZ=Asia/Dhaka date +"%I:%M:%S%p - %d-%m-%Y")
-          echo "Current time: $CURRENT_TIME"
+          # ---------- Configuration ----------
+          SOURCE_FILE="$GITHUB_WORKSPACE/playlist-repo/sirometv.m3u"
+          OUTPUT_FILE="$GITHUB_WORKSPACE/playlist-repo/Bngla-BD-IND.m3u"
+          CHANNELS_FILE="channels.txt"
 
-          # সোর্স ফাইলের হ্যাশ (শুধু তুলনার জন্য)
-          SOURCE_HASH=$(sha256sum sirometv.m3u | cut -d' ' -f1)
-          echo "Source hash: $SOURCE_HASH"
-
-          # আগের হ্যাশ পড়ুন
-          PREV_HASH=""
-          if [ -f .sirometv_hash ]; then
-            PREV_HASH=$(cat .sirometv_hash)
+          # ---------- Read channel list ----------
+          if [ -f "$CHANNELS_FILE" ]; then
+            mapfile -t CHANNELS < "$CHANNELS_FILE"
+            # Remove empty lines and trim whitespace
+            CHANNELS=($(printf "%s\n" "${CHANNELS[@]}" | awk 'NF {gsub(/^[ \t]+|[ \t]+$/, ""); print}'))
+          else
+            echo "⚠️ channels.txt not found. Using default list."
+            CHANNELS=(
+              "BTV National"
+              "BTV CTG"
+              "BTV NEWS"
+              "Sangsad TV"
+              "Islamic TV"
+              "Jamuna TV"
+              "Somoy TV"
+              "Ekushey TV"
+              "NTV BD"
+              "NTV-Europe"
+              "NTV UK"
+              "Channel 24"
+              "Star Jalsha"
+              "Star-Jalsha Movies"
+              "Zee Bangla"
+            )
           fi
-          echo "Previous hash: $PREV_HASH"
 
-          # পাইথন স্ক্রিপ্ট চালান
-          python3 << 'EOF'
-import os
-import re
+          # ---------- Parse source playlist ----------
+          declare -A entry_map      # normalized channel name -> full entry block (with trailing newline)
+          declare -A group_map      # normalized channel name -> group-title
 
-# চ্যানেল লিস্ট এনভায়রনমেন্ট থেকে পড়ি
-channels_str = os.environ.get('CHANNEL_LIST', '')
-desired_channels = [line.strip() for line in channels_str.splitlines() if line.strip()]
+          current_entry=""
+          current_channel=""
+          current_group=""
+          inside_entry=0
 
-print(f"Desired channels: {desired_channels}")
+          while IFS= read -r line || [ -n "$line" ]; do
+            if [[ $line =~ ^#EXTINF ]]; then
+              # Save previous entry
+              if [ $inside_entry -eq 1 ] && [ -n "$current_channel" ]; then
+                entry_map["$current_channel"]="$current_entry"$'\n'
+                group_map["$current_channel"]="$current_group"
+              fi
+              # Start new entry
+              current_entry="$line"
+              # Extract channel name (after last comma)
+              channel_name=$(echo "$line" | sed -n 's/.*, *//p' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+              current_channel=$(echo "$channel_name" | tr '[:upper:]' '[:lower:]')
+              # Extract group-title
+              if [[ $line =~ group-title=\"([^\"]*)\" ]]; then
+                current_group="${BASH_REMATCH[1]}"
+              else
+                current_group=""
+              fi
+              inside_entry=1
+            else
+              if [ $inside_entry -eq 1 ]; then
+                current_entry+=$'\n'"$line"
+              fi
+            fi
+          done < "$SOURCE_FILE"
+          # Save last entry
+          if [ $inside_entry -eq 1 ] && [ -n "$current_channel" ]; then
+            entry_map["$current_channel"]="$current_entry"$'\n'
+            group_map["$current_channel"]="$current_group"
+          fi
 
-source_file = 'sirometv.m3u'
-output_file = 'Bngla-BD-IND.m3u'
+          # ---------- Build blocks for output ----------
+          RED_LINE=$(printf '🔴%.0s' {1..50})   # 50 red circles
+          blocks=()
+          last_group=""
 
-# সোর্স ফাইল পড়ি
-with open(source_file, 'r', encoding='utf-8') as f:
-    lines = f.readlines()
+          for raw_channel in "${CHANNELS[@]}"; do
+            channel=$(echo "$raw_channel" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            norm_channel=$(echo "$channel" | tr '[:upper:]' '[:lower:]')
 
-# এন্ট্রি পার্স
-entries = []
-i = 0
-while i < len(lines):
-    line = lines[i].rstrip('\n')
-    if line.startswith('#EXTINF'):
-        extinf = line
-        group_match = re.search(r'group-title="([^"]*)"', extinf)
-        group = group_match.group(1) if group_match else ''
-        name = extinf.split(',')[-1].strip()
-        urls = []
-        i += 1
-        while i < len(lines) and not lines[i].startswith('#EXTINF'):
-            urls.append(lines[i].rstrip('\n'))
-            i += 1
-        entries.append({'extinf': extinf, 'urls': urls, 'group': group, 'name': name})
-    else:
-        i += 1
+            if [[ -n "${entry_map[$norm_channel]}" ]]; then
+              # Channel found
+              group="${group_map[$norm_channel]}"
+              # Insert group separator if needed
+              if [ ${#blocks[@]} -gt 0 ] && [ "$group" != "$last_group" ]; then
+                blocks+=("$RED_LINE"$'\n'"$RED_LINE"$'\n')
+              fi
+              # Add entry block (already ends with newline)
+              blocks+=("${entry_map[$norm_channel]}")
+              last_group="$group"
+            else
+              # Channel not found – add comment line
+              blocks+=("# $channel not found"$'\n')
+              # Do not change last_group
+            fi
+          done
 
-print(f"Total entries in source: {len(entries)}")
+          # ---------- Write output file ----------
+          {
+            echo "#EXTM3U"
+            echo "# Sirome TV (2022- 2026)"
+            echo "#🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।"
+            echo "# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source."
+            BD_TIME=$(TZ=Asia/Dhaka date +"%I:%M:%S%p - %d-%m-%Y" | sed 's/AM/am/;s/PM/pm/')
+            echo "#Update Time: $BD_TIME ✅"
+            echo   # one blank line after header
+          } > "$OUTPUT_FILE"
 
-# আউটপুট ফাইলের কন্টেন্ট তৈরি
-output_lines = []
-output_lines.append('#EXTM3U')
-output_lines.append('# Sirome TV (2022- 2026)')
-output_lines.append('#🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।')
-output_lines.append('# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.')
-output_lines.append(f'#Update Time: {os.environ["CURRENT_TIME"]} ✅')
-output_lines.append('')
+          # Append blocks with two blank lines between them
+          for i in "${!blocks[@]}"; do
+            printf "%s" "${blocks[$i]}" >> "$OUTPUT_FILE"
+            if [ $i -lt $((${#blocks[@]}-1)) ]; then
+              echo >> "$OUTPUT_FILE"
+              echo >> "$OUTPUT_FILE"
+            fi
+          done
 
-RED_SEP = '#🔴' * 50
-
-# ম্যাচিং এন্ট্রি খুঁজি
-matched = []
-found_names = set()
-for entry in entries:
-    if entry['name'] in desired_channels:
-        matched.append(entry)
-        found_names.add(entry['name'])
-
-# মিসিং চ্যানেল
-missing = [ch for ch in desired_channels if ch not in found_names]
-
-print(f"Matched: {len(matched)}, Missing: {len(missing)}")
-
-# গ্রুপ অনুযায়ী সাজাই
-prev_group = None
-first_entry = True
-for entry in matched:
-    if entry['group'] != prev_group:
-        if not first_entry:
-            output_lines.append('')
-            output_lines.append(RED_SEP)
-            output_lines.append(RED_SEP)
-            output_lines.append('')
-        prev_group = entry['group']
-    else:
-        if not first_entry:
-            output_lines.append('')
-            output_lines.append('')
-    output_lines.append(entry['extinf'])
-    output_lines.extend(entry['urls'])
-    first_entry = False
-
-if missing:
-    output_lines.append('')
-    output_lines.append('# Missing channels (not found in source):')
-    for ch in missing:
-        output_lines.append(f'# {ch} not found')
-    output_lines.append('')
-
-new_content = '\n'.join(output_lines)
-
-# বিদ্যমান ফাইলের সাথে তুলনা
-if os.path.exists(output_file):
-    with open(output_file, 'r', encoding='utf-8') as f:
-        existing_content = f.read()
-else:
-    existing_content = ''
-
-changed = new_content != existing_content
-source_changed = (os.environ['SOURCE_HASH'] != os.environ['PREV_HASH'])
-
-# আউটপুট সেটিং
-with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-    f.write(f"changed={'true' if changed else 'false'}\n")
-    f.write(f"source_changed={'true' if source_changed else 'false'}\n")
-    f.write(f"current_time={os.environ['CURRENT_TIME']}\n")
-    f.write(f"source_hash={os.environ['SOURCE_HASH']}\n")
-
-if changed:
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(new_content)
-    print("Playlist updated.")
-else:
-    print("No changes detected.")
-EOF
-        env:
-          CURRENT_TIME: ${{ env.CURRENT_TIME }}
-          SOURCE_HASH: ${{ env.SOURCE_HASH }}
-          PREV_HASH: ${{ env.PREV_HASH }}
-          CHANNEL_LIST: ${{ env.CHANNEL_LIST }}
+          echo "✅ New playlist generated at $OUTPUT_FILE"
 
       - name: Commit and push if changed
-        if: steps.generate.outputs.changed == 'true'
         run: |
           cd playlist-repo
+
+          # Set git user
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          CURRENT_TIME="${{ steps.generate.outputs.current_time }}"
-          SOURCE_HASH="${{ steps.generate.outputs.source_hash }}"
+          # Add the file
+          git add Bngla-BD-IND.m3u
 
-          # সোর্স হ্যাশ সবসময় সংরক্ষণ করি (পরবর্তী রানের জন্য)
-          echo "$SOURCE_HASH" > .sirometv_hash
-
-          # প্রথমবার কমিট কিনা চেক
-          if git rev-parse --verify HEAD >/dev/null 2>&1 && git ls-files --error-unmatch Bngla-BD-IND.m3u >/dev/null 2>&1; then
-            COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🔄 Updated Done ✅ at $CURRENT_TIME"
-          else
-            COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🆗 Started ✅ at $CURRENT_TIME"
+          # Check if there are changes
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
           fi
 
-          git add .sirometv_hash
-          git add Bngla-BD-IND.m3u
+          # Determine commit message based on trigger
+          CURRENT_TIME=$(TZ=Asia/Dhaka date +"%I:%M:%S%p - %d-%m-%Y" | sed 's/AM/am/;s/PM/pm/')
+          if [ "${{ github.event_name }}" == "repository_dispatch" ]; then
+            COMMIT_MSG="🆗 Bangla TV 🆚 BD-IND 🔄 sirometv.m3u  ✅ at $CURRENT_TIME"
+          else
+            COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🔄 Updated Done ✅ at $CURRENT_TIME"
+          fi
+
           git commit -m "$COMMIT_MSG"
-          git push
+          git push origin main
