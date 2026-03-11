@@ -260,7 +260,7 @@ jobs:
           fi
 
           # ---------- Build blocks for output ----------
-          RED_LINE=$(printf '#🔴%.0s' {1..50})   # 50 red circles
+          RED_LINE=$(printf '🔴%.0s' {1..50})   # 50 red circles
           blocks=()
           last_group=""
 
