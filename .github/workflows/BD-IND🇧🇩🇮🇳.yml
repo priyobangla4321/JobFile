@@ -271,8 +271,8 @@ jobs:
           fi
 
           # ---------- Build blocks for output ----------
-          # Group separator: a line with hash and 5 red circles (as per your instruction)
-          RED_LINE="#$(printf '🔴%.0s' {1..5})"
+          # Group separator: a line with hash and 50 red circles (as per your instruction)
+          RED_LINE="#$(printf '🔴%.0s' {1..50})"
           blocks=()
           last_group=""
 
