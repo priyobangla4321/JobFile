@@ -1,0 +1,213 @@
+name: Update Bngla-BD-IND Playlist
+
+on:
+  schedule:
+    # Runs every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:        # Allows manual trigger from Actions tab
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout target repository (sirometv/playlist)
+        uses: actions/checkout@v4
+        with:
+          repository: sirometv/playlist
+          token: ${{ secrets.PAT_TOKEN }}
+          path: playlist-repo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Generate playlist
+        id: generate
+        env:
+          TZ: Asia/Dhaka
+        run: |
+          cd playlist-repo
+
+          # Get current Bangladesh time
+          CURRENT_TIME=$(date +"%I:%M:%S%p - %d-%m-%Y")
+
+          # Read desired channel names from channels.txt (one per line, # for comments)
+          if [ ! -f channels.txt ]; then
+            echo "Error: channels.txt not found in repository!"
+            exit 1
+          fi
+          mapfile -t CHANNELS < <(grep -v '^#' channels.txt | grep -v '^[[:space:]]*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+          # Compute hash of source playlist
+          SOURCE_HASH=$(sha256sum sirometv.m3u | cut -d' ' -f1)
+
+          # Read previous hash if exists
+          PREV_HASH=""
+          if [ -f .sirometv_hash ]; then
+            PREV_HASH=$(cat .sirometv_hash)
+          fi
+
+          # Run Python script to generate new playlist content
+          python3 << EOF
+import os
+import re
+
+desired_channels = ${CHANNELS[@]@Q}  # bash array to python list
+desired_channels = [c.strip() for c in desired_channels if c.strip()]
+
+source_file = 'sirometv.m3u'
+output_file = 'Bngla-BD-IND.m3u'
+
+# Read source playlist
+with open(source_file, 'r', encoding='utf-8') as f:
+    lines = f.readlines()
+
+# Parse entries
+entries = []  # each entry: {'extinf': line, 'urls': [lines], 'group': group, 'name': name}
+i = 0
+while i < len(lines):
+    line = lines[i].rstrip('\n')
+    if line.startswith('#EXTINF'):
+        extinf = line
+        # Extract group-title
+        group_match = re.search(r'group-title="([^"]*)"', extinf)
+        group = group_match.group(1) if group_match else ''
+        # Extract channel name (after last comma)
+        name = extinf.split(',')[-1].strip()
+        # Collect following lines until next #EXTINF or EOF
+        urls = []
+        i += 1
+        while i < len(lines) and not lines[i].startswith('#EXTINF'):
+            urls.append(lines[i].rstrip('\n'))
+            i += 1
+        entries.append({'extinf': extinf, 'urls': urls, 'group': group, 'name': name})
+    else:
+        i += 1
+
+# Build output lines
+output_lines = []
+
+# Header
+output_lines.append('#EXTM3U')
+output_lines.append('# Sirome TV (2022- 2026)')
+output_lines.append('#🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।')
+output_lines.append('# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.')
+output_lines.append(f'#Update Time: {os.environ["CURRENT_TIME"]} ✅')
+output_lines.append('')  # blank line after header
+
+# Separator line (red circles)
+RED_SEP = '#🔴' * 50  # 50 red circles
+
+# Collect matched entries in order
+matched = []
+missing = []
+found_names = set()
+
+for entry in entries:
+    if entry['name'] in desired_channels:
+        matched.append(entry)
+        found_names.add(entry['name'])
+
+# Determine missing channels
+for ch in desired_channels:
+    if ch not in found_names:
+        missing.append(ch)
+
+# Group matched entries by group-title for separators
+prev_group = None
+first_entry = True
+for entry in matched:
+    if entry['group'] != prev_group:
+        if not first_entry:
+            # add separator before new group (except before first group)
+            output_lines.append('')
+            output_lines.append(RED_SEP)
+            output_lines.append(RED_SEP)
+            output_lines.append('')
+        prev_group = entry['group']
+    else:
+        # between entries of same group, add two blank lines
+        if not first_entry:
+            output_lines.append('')
+            output_lines.append('')
+    # write entry
+    output_lines.append(entry['extinf'])
+    output_lines.extend(entry['urls'])
+    first_entry = False
+
+# After all matched entries, add missing channels comments
+if missing:
+    output_lines.append('')
+    output_lines.append('# Missing channels (not found in source):')
+    for ch in missing:
+        output_lines.append(f'# {ch} not found')
+    output_lines.append('')
+
+# Join all lines
+new_content = '\n'.join(output_lines)
+
+# Compare with existing file if any
+existing_content = ''
+if os.path.exists(output_file):
+    with open(output_file, 'r', encoding='utf-8') as f:
+        existing_content = f.read()
+
+if new_content != existing_content:
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(new_content)
+    print("CHANGED=true")
+    # Determine commit message based on source hash change
+    if "$SOURCE_HASH" != "$PREV_HASH":
+        print("SOURCE_CHANGED=true")
+    else:
+        print("SOURCE_CHANGED=false")
+else:
+    print("CHANGED=false")
+EOF
+
+          # Capture outputs from Python script
+          CHANGED=$(grep -oP 'CHANGED=\K\S+' output.txt 2>/dev/null || echo "false")
+          SOURCE_CHANGED=$(grep -oP 'SOURCE_CHANGED=\K\S+' output.txt 2>/dev/null || echo "false")
+
+          # Store variables for later steps
+          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+          echo "source_changed=$SOURCE_CHANGED" >> $GITHUB_OUTPUT
+          echo "current_time=$CURRENT_TIME" >> $GITHUB_OUTPUT
+          echo "source_hash=$SOURCE_HASH" >> $GITHUB_OUTPUT
+
+      - name: Commit and push if changed
+        if: steps.generate.outputs.changed == 'true'
+        run: |
+          cd playlist-repo
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          CURRENT_TIME="${{ steps.generate.outputs.current_time }}"
+          SOURCE_CHANGED="${{ steps.generate.outputs.source_changed }}"
+          SOURCE_HASH="${{ steps.generate.outputs.source_hash }}"
+
+          # Determine commit message
+          if [ "$SOURCE_CHANGED" == "true" ]; then
+            COMMIT_MSG="🆗 Bangla TV 🆚 BD-IND 🔄 sirometv.m3u ✅ at $CURRENT_TIME"
+          else
+            # Check if this is first commit (no previous file)
+            if git rev-parse HEAD -- Bngla-BD-IND.m3u >/dev/null 2>&1; then
+              COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🔄 Updated Done ✅ at $CURRENT_TIME"
+            else
+              COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🆗 Started ✅ at $CURRENT_TIME"
+            fi
+          fi
+
+          # Update hash file if source changed
+          if [ "$SOURCE_CHANGED" == "true" ]; then
+            echo "$SOURCE_HASH" > .sirometv_hash
+            git add .sirometv_hash
+          fi
+
+          git add Bngla-BD-IND.m3u
+          git commit -m "$COMMIT_MSG"
+          git push
