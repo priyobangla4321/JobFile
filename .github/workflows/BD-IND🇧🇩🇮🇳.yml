@@ -2,8 +2,8 @@ name: BD-IND🇧🇩🇮🇳
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # প্রতি ৩০ মিনিট পর পর
-  workflow_dispatch:          # ম্যানুয়াল রান
+    - cron: '*/30 * * * *'   # প্রতি ৩০ মিনিট
+  workflow_dispatch:          # ম্যানুয়াল ট্রিগার
 
 jobs:
   build:
@@ -26,7 +26,7 @@ jobs:
         id: generate
         env:
           TZ: Asia/Dhaka
-          # চ্যানেলের তালিকা সরাসরি এখানে (প্রতি লাইনে একটি নাম)
+          # আপনার চ্যানেলের নাম এখানে দিন (প্রতি লাইনে একটি)
           CHANNEL_LIST: |
             BTV National
             BTV CTG
@@ -46,11 +46,11 @@ jobs:
         run: |
           cd playlist-repo
 
-          # বর্তমান সময় বাংলাদেশ সময়ে
+          # বাংলাদেশ সময়
           CURRENT_TIME=$(TZ=Asia/Dhaka date +"%I:%M:%S%p - %d-%m-%Y")
           echo "Current time: $CURRENT_TIME"
 
-          # সোর্স প্লেলিস্টের হ্যাশ
+          # সোর্স ফাইলের হ্যাশ (শুধু তুলনার জন্য)
           SOURCE_HASH=$(sha256sum sirometv.m3u | cut -d' ' -f1)
           echo "Source hash: $SOURCE_HASH"
 
@@ -68,7 +68,7 @@ import re
 
 # চ্যানেল লিস্ট এনভায়রনমেন্ট থেকে পড়ি
 channels_str = os.environ.get('CHANNEL_LIST', '')
-desired_channels = [line.strip() for line in channels_str.splitlines() if line.strip() and not line.strip().startswith('#')]
+desired_channels = [line.strip() for line in channels_str.splitlines() if line.strip()]
 
 print(f"Desired channels: {desired_channels}")
 
@@ -100,7 +100,7 @@ while i < len(lines):
 
 print(f"Total entries in source: {len(entries)}")
 
-# আউটপুট ফাইলের জন্য কন্টেন্ট বিল্ড
+# আউটপুট ফাইলের কন্টেন্ট তৈরি
 output_lines = []
 output_lines.append('#EXTM3U')
 output_lines.append('# Sirome TV (2022- 2026)')
@@ -124,7 +124,7 @@ missing = [ch for ch in desired_channels if ch not in found_names]
 
 print(f"Matched: {len(matched)}, Missing: {len(missing)}")
 
-# আউটপুট ফাইল সাজাই
+# গ্রুপ অনুযায়ী সাজাই
 prev_group = None
 first_entry = True
 for entry in matched:
@@ -177,9 +177,9 @@ else:
     print("No changes detected.")
 EOF
         env:
-          CURRENT_TIME: ${{ CURRENT_TIME }}
-          SOURCE_HASH: ${{ SOURCE_HASH }}
-          PREV_HASH: ${{ PREV_HASH }}
+          CURRENT_TIME: ${{ env.CURRENT_TIME }}
+          SOURCE_HASH: ${{ env.SOURCE_HASH }}
+          PREV_HASH: ${{ env.PREV_HASH }}
           CHANNEL_LIST: ${{ env.CHANNEL_LIST }}
 
       - name: Commit and push if changed
@@ -190,22 +190,18 @@ EOF
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           CURRENT_TIME="${{ steps.generate.outputs.current_time }}"
-          SOURCE_CHANGED="${{ steps.generate.outputs.source_changed }}"
           SOURCE_HASH="${{ steps.generate.outputs.source_hash }}"
 
-          if [ "$SOURCE_CHANGED" == "true" ]; then
-            COMMIT_MSG="🆗 Bangla TV 🆚 BD-IND 🔄 sirometv.m3u ✅ at $CURRENT_TIME"
+          # সোর্স হ্যাশ সবসময় সংরক্ষণ করি (পরবর্তী রানের জন্য)
+          echo "$SOURCE_HASH" > .sirometv_hash
+
+          # প্রথমবার কমিট কিনা চেক
+          if git rev-parse --verify HEAD >/dev/null 2>&1 && git ls-files --error-unmatch Bngla-BD-IND.m3u >/dev/null 2>&1; then
+            COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🔄 Updated Done ✅ at $CURRENT_TIME"
           else
-            # প্রথম কমিট চেক (যদি ফাইল পূর্বে না থাকে)
-            if git rev-parse --verify HEAD >/dev/null 2>&1 && git ls-files --error-unmatch Bngla-BD-IND.m3u >/dev/null 2>&1; then
-              COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🔄 Updated Done ✅ at $CURRENT_TIME"
-            else
-              COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🆗 Started ✅ at $CURRENT_TIME"
-            fi
+            COMMIT_MSG="🆗 Bangla TV🤖 BD-IND 🆗 Started ✅ at $CURRENT_TIME"
           fi
 
-          # সোর্স হ্যাশ সবসময় আপডেট করুন (পরবর্তী রানের জন্য)
-          echo "$SOURCE_HASH" > .sirometv_hash
           git add .sirometv_hash
           git add Bngla-BD-IND.m3u
           git commit -m "$COMMIT_MSG"
