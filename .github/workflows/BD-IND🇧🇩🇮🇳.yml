@@ -24,14 +24,14 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           path: playlist-repo
 
-      - name: Generate new Bngla-BD-IND.m3u
+      - name: Generate new Bangla-BD-IND.m3u
         run: |
           set -e
           cd jobfile-repo
 
           # ---------- Configuration ----------
           SOURCE_FILE="$GITHUB_WORKSPACE/playlist-repo/sirometv.m3u"
-          OUTPUT_FILE="$GITHUB_WORKSPACE/playlist-repo/Bngla-BD-IND.m3u"
+          OUTPUT_FILE="$GITHUB_WORKSPACE/playlist-repo/Bangla-BD-IND.m3u"
           CHANNELS_FILE="channels.txt"
 
           # ---------- Read channel list ----------
@@ -157,7 +157,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Add the file
-          git add Bngla-BD-IND.m3u
+          git add Bangla-BD-IND.m3u
 
           # Check if there are changes
           if git diff --cached --quiet; then
