@@ -1,4 +1,4 @@
-name: Update Bngla-BD-IND Playlist
+name: BD-IND🇧🇩🇮🇳
 
 on:
   schedule:
@@ -26,17 +26,20 @@ jobs:
         id: generate
         env:
           TZ: Asia/Dhaka
+          # পাইথন স্ক্রিপ্টে ব্যবহারের জন্য চ্যানেল লিস্ট এনভায়রনমেন্ট ভেরিয়েবল হিসেবে পাস
+          CHANNELS_DATA: ${{ secrets.CHANNELS_DATA }}  # if you have many channels, store in secret
         run: |
           cd playlist-repo
 
           CURRENT_TIME=$(date +"%I:%M:%S%p - %d-%m-%Y")
 
-          # চ্যানেল লিস্ট পড়ুন (channels.txt ফাইল থেকে)
+          # চ্যানেল লিস্ট ফাইল থেকে পড়ে একটি টেম্প ফাইলে সংরক্ষণ
           if [ ! -f channels.txt ]; then
             echo "Error: channels.txt not found in repository!"
             exit 1
           fi
-          mapfile -t CHANNELS < <(grep -v '^#' channels.txt | grep -v '^[[:space:]]*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          # গ্রেপ করে কমেন্ট ও খালি লাইন বাদ, ট্রিম করে টেম্প ফাইলে রাখি
+          grep -v '^#' channels.txt | grep -v '^[[:space:]]*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' > /tmp/channels.list
 
           SOURCE_HASH=$(sha256sum sirometv.m3u | cut -d' ' -f1)
 
@@ -45,13 +48,14 @@ jobs:
             PREV_HASH=$(cat .sirometv_hash)
           fi
 
-          # Python স্ক্রিপ্ট চালান এবং আউটপুট একটি ফাইলে রাখুন
-          python3 << 'EOF' > output.txt
+          # Python স্ক্রিপ্ট চালান - এখানে কোনো শেল ভেরিয়েবল ইন্টারপোলেশন নেই
+          python3 << 'EOF'
 import os
 import re
 
-desired_channels = """${CHANNELS[@]}""".splitlines()
-desired_channels = [c.strip() for c in desired_channels if c.strip()]
+# চ্যানেল লিস্ট ফাইল থেকে পড়ি
+with open('/tmp/channels.list', 'r', encoding='utf-8') as f:
+    desired_channels = [line.strip() for line in f if line.strip()]
 
 source_file = 'sirometv.m3u'
 output_file = 'Bngla-BD-IND.m3u'
@@ -129,27 +133,26 @@ if os.path.exists(output_file):
 else:
     existing_content = ''
 
-if new_content != existing_content:
+changed = new_content != existing_content
+source_changed = os.environ['SOURCE_HASH'] != os.environ['PREV_HASH']
+
+# আউটপুট স্টেপ ভেরিয়েবলের জন্য ফাইল তৈরি
+with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+    f.write(f"changed={'true' if changed else 'false'}\n")
+    f.write(f"source_changed={'true' if source_changed else 'false'}\n")
+    f.write(f"current_time={os.environ['CURRENT_TIME']}\n")
+    f.write(f"source_hash={os.environ['SOURCE_HASH']}\n")
+    f.write(f"prev_hash={os.environ['PREV_HASH']}\n")
+
+if changed:
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(new_content)
-    print("CHANGED=true")
-    if os.environ["SOURCE_HASH"] != os.environ["PREV_HASH"]:
-        print("SOURCE_CHANGED=true")
-    else:
-        print("SOURCE_CHANGED=false")
-else:
-    print("CHANGED=false")
 EOF
-
-          # আউটপুট ফাইল থেকে ভেরিয়েবল সেট করুন
-          CHANGED=$(grep -oP 'CHANGED=\K\S+' output.txt || echo "false")
-          SOURCE_CHANGED=$(grep -oP 'SOURCE_CHANGED=\K\S+' output.txt || echo "false")
-
-          echo "changed=$CHANGED" >> $GITHUB_OUTPUT
-          echo "source_changed=$SOURCE_CHANGED" >> $GITHUB_OUTPUT
-          echo "current_time=$CURRENT_TIME" >> $GITHUB_OUTPUT
-          echo "source_hash=$SOURCE_HASH" >> $GITHUB_OUTPUT
-          echo "prev_hash=$PREV_HASH" >> $GITHUB_OUTPUT
+        env:
+          CURRENT_TIME: ${{ steps.generate.outputs.current_time }}
+          SOURCE_HASH: ${{ steps.generate.outputs.source_hash }}
+          PREV_HASH: ${{ steps.generate.outputs.prev_hash }}
+        # এখানে CURRENT_TIME, SOURCE_HASH, PREV_HASH পাইথনে পাওয়া যাবে os.environ থেকে
 
       - name: Commit and push if changed
         if: steps.generate.outputs.changed == 'true'
