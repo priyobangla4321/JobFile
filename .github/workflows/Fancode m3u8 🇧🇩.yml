@@ -1,4 +1,5 @@
 #এটির কাজ হচ্ছে প্রথমে m3u8 ফাইল বানাবে Fancode এর জন্য।
+#এটি Fancode ফোল্ডারে m3u8 ফাইল তৈরি করবে। 
 name: Fancode m3u8 🇧🇩
 
 on:
@@ -156,6 +157,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "🆗 Fancode - Updated ✅ at $CURRENT_TIME"
+            git commit -m "🆗 Fancode - Updated ✅"
             git push
           fi
