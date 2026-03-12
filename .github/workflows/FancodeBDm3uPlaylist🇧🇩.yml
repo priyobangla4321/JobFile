@@ -1,5 +1,6 @@
 #এটির কাজ হচ্ছে সিক্রেট Fancode_2026 থেকে Extinf কপি করবে আর Fancode থেকে m3u8 লিংক কালেক্ট করবে।
-name: Fancode Master Playlist 🇧🇩
+#এটি আপডেট হয় FancodeBD.m3u
+name: FancodeBD m3u Playlist 🇧🇩
 
 on:
   schedule:
@@ -21,7 +22,7 @@ jobs:
         run: |
           curl -L "${{ secrets.Fancode_2026 }}" -o original.m3u
 
-      - name: Generate master playlist (fancodeBD.m3u) with group-title="Live Event"
+      - name: Generate master playlist () with group-title="Live Event"
         run: |
           python3 << 'EOF'
           import os
