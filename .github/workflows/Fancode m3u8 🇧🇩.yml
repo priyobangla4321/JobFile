@@ -1,4 +1,4 @@
-#এটির কাজ হচ্ছে প্রথমে m3u8 ফাইল বানাবে Fancode এর জন্য।
+#এটির কাজ হচ্ছে প্রথমে m3u8 ফাইল বানাবে Fancode ফোল্ডারের এর জন্য।
 name: Fancode m3u8 🇧🇩
 
 on:
@@ -20,6 +20,16 @@ jobs:
       - name: Download main playlist from secret URL
         run: |
           curl -L "${{ secrets.Fancode_2026 }}" -o main_playlist.m3u
+
+      - name: Get Bangladesh time
+        id: bd_time
+        run: |
+          # Set timezone to Bangladesh (Asia/Dhaka)
+          export TZ='Asia/Dhaka'
+          # Format: 01:59:02pm - 12-03-26 (hour:minute:secondam/pm - day-month-year)
+          BD_TIME=$(date '+%I:%M:%S%p - %d-%m-%y' | sed 's/AM/am/g; s/PM/pm/g')
+          echo "BD_TIME=$BD_TIME" >> $GITHUB_OUTPUT
+          echo "Bangladesh time: $BD_TIME"
 
       - name: Process playlist and generate m3u8 files by group-title
         run: |
@@ -156,6 +166,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "🆗 Fancode - Updated ✅"
+            git commit -m "🆗 Fancode - Updated ✅ ${{ steps.bd_time.outputs.BD_TIME }}"
             git push
           fi
