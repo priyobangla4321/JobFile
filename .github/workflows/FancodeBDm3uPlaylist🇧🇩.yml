@@ -22,6 +22,16 @@ jobs:
         run: |
           curl -L "${{ secrets.Fancode_2026 }}" -o original.m3u
 
+      - name: Get Bangladesh time
+        id: bd_time
+        run: |
+          # Set timezone to Bangladesh (Asia/Dhaka)
+          export TZ='Asia/Dhaka'
+          # Format: 12:50:19 AM 01-03-2026 (hour:minute:second AM/PM day-month-year)
+          BD_TIME=$(date '+%I:%M:%S %p %d-%m-%Y' | sed 's/AM/AM/g; s/PM/PM/g')
+          echo "BD_TIME=$BD_TIME" >> $GITHUB_OUTPUT
+          echo "Bangladesh time: $BD_TIME"
+
       - name: Generate master playlist () with group-title="Live Event"
         run: |
           python3 << 'EOF'
@@ -132,6 +142,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Auto-update fancode master playlist (Live Event group)"
+            git commit -m "🆗 FANCODE 🤖 Sports 🔄 Updated Done ✅ at ${{ steps.bd_time.outputs.BD_TIME }}"
             git push
           fi
