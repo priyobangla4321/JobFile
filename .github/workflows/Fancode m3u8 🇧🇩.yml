@@ -156,6 +156,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "🆗 Fancode - Updated ✅"
+            git commit -m "Auto-update fancode m3u8 files by group-title"
             git push
           fi
