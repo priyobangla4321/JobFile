@@ -37,17 +37,6 @@ jobs:
           import string
           import sys
 
-          # Resolution mapping (kept for reference, but we use values from JSON's auto field)
-          RES_MAP = {
-              '240': {'bandwidth': 300000, 'resolution': '426x240'},
-              '360': {'bandwidth': 600000, 'resolution': '640x360'},
-              '480': {'bandwidth': 800000, 'resolution': '854x480'},
-              '540': {'bandwidth': 900000, 'resolution': '960x540'},
-              '720': {'bandwidth': 1500000, 'resolution': '1280x720'},
-              '1080': {'bandwidth': 3000000, 'resolution': '1920x1080'},
-              '2160': {'bandwidth': 12000000, 'resolution': '3840x2160'},
-          }
-
           def safe_filename(title):
               # Replace spaces with dash
               name = title.replace(' ', '-')
@@ -75,9 +64,18 @@ jobs:
               print(f"Error loading JSON: {e}")
               sys.exit(1)
 
-          # Check if data is a dictionary (as expected)
+          # Ensure data is a dict and has 'matches' key
           if not isinstance(data, dict):
-              print(f"Error: Expected JSON object (dict), but got {type(data)}. Content preview: {str(data)[:200]}")
+              print(f"Error: Expected JSON object, got {type(data)}")
+              sys.exit(1)
+
+          if 'matches' not in data:
+              print("Error: No 'matches' key found in JSON")
+              sys.exit(1)
+
+          matches = data['matches']
+          if not isinstance(matches, list):
+              print(f"Error: 'matches' should be a list, got {type(matches)}")
               sys.exit(1)
 
           # Remove old .m3u8 files
@@ -89,20 +87,39 @@ jobs:
           file_counter = 1
 
           # Process each match
-          for match_id, details in data.items():
-              if not isinstance(details, dict):
-                  print(f"Warning: details for match_id {match_id} is not a dict, skipping. Type: {type(details)}")
+          for match in matches:
+              if not isinstance(match, dict):
+                  print(f"Skipping non-dict match: {match}")
                   continue
 
-              title = details.get('title', '').strip()
+              # Only process LIVE matches
+              status = match.get('status', '')
+              if status != 'LIVE':
+                  print(f"Skipping match {match.get('match_id', 'unknown')} with status: {status}")
+                  continue
+
+              match_id = str(match.get('match_id', ''))
+              title = match.get('title', '').strip()
               if not title:
                   title = f"Match-{match_id}"
-              tvg_logo = details.get('tvg_logo', '')
-              tvg_language = details.get('tvg_language', '')
-              auto_playlist = details.get('auto', '')
+              tvg_logo = match.get('image', '')  # using 'image' field as logo
+              tvg_language = match.get('language', 'english').lower()
 
+              # Get auto_streams
+              auto_streams = match.get('auto_streams', [])
+              if not auto_streams or not isinstance(auto_streams, list):
+                  print(f"No auto_streams for match {match_id}, skipping")
+                  continue
+
+              # Use first auto_stream entry
+              auto_entry = auto_streams[0]
+              if not isinstance(auto_entry, dict):
+                  print(f"auto_streams[0] not a dict for match {match_id}, skipping")
+                  continue
+
+              auto_playlist = auto_entry.get('auto', '')
               if not auto_playlist:
-                  print(f"Skipping {match_id}: no 'auto' field")
+                  print(f"No 'auto' field in auto_streams for match {match_id}, skipping")
                   continue
 
               # Parse the auto playlist (HLS format)
@@ -127,7 +144,7 @@ jobs:
                       i += 1
 
               if not urls:
-                  print(f"No stream info found for {match_id}")
+                  print(f"No stream info found for match {match_id}")
                   continue
 
               # Generate m3u8 filename from title
@@ -153,13 +170,13 @@ jobs:
                   "Live_Now": live_now
               }
               file_counter += 1
-              print(f"Generated: {file_path}")
+              print(f"Generated: {file_path} for match {match_id}")
 
           # Write mapping.json
           mapping_path = os.path.join(output_dir, 'mapping.json')
           with open(mapping_path, 'w', encoding='utf-8') as f:
               json.dump(mapping, f, indent=2, ensure_ascii=False)
-          print("mapping.json created.")
+          print("mapping.json created with", len(mapping), "LIVE matches.")
 
           EOF
 
