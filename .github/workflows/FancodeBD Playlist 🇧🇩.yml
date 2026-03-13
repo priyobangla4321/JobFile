@@ -1,0 +1,97 @@
+name: FancodeBD Playlist 🇧🇩
+
+on:
+  schedule:
+    # Every 13 minutes
+    - cron: '*/13 * * * *'
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the target repository (sirometv/playlist) where the playlist will be updated
+      - name: Checkout sirometv/playlist
+        uses: actions/checkout@v4
+        with:
+          repository: sirometv/playlist
+          token: ${{ secrets.PAT_TOKEN }}
+          path: playlist-repo
+
+      # Fetch the mapping.json from the raw URL
+      - name: Fetch mapping.json
+        run: |
+          curl -s -o mapping.json "https://raw.githubusercontent.com/sirometv/playlist/main/fancode/mapping.json"
+        working-directory: playlist-repo
+
+      # Generate playlist content and update fancodeBD.m3u
+      - name: Generate M3U playlist
+        run: |
+          set -e
+          cd playlist-repo
+
+          # Get current Bangladesh time
+          TZ='Asia/Dhaka' date +"%Y-%m-%d %H:%M:%S" > bd_time_short.txt
+          TZ='Asia/Dhaka' date +"%A, %d %B %Y, %I:%M:%S %p" > bd_time_long.txt
+          BD_SHORT=$(cat bd_time_short.txt)
+          BD_LONG=$(cat bd_time_long.txt)
+
+          # Count entries in mapping.json (supports both array and single object)
+          if jq -e .[0] mapping.json > /dev/null 2>&1; then
+            # It's an array
+            COUNT=$(jq '. | length' mapping.json)
+            # Extract entries
+            jq -r '.[] | "#EXTINF:-1 tvg-logo=\"" + .tvg_logo + "\" group-title=\"Live Event\", 🔴Live Now🔴\n" + .Live_Now' mapping.json > playlist_entries.txt
+          else
+            # Single object (or empty)
+            if jq -e .tvg_logo mapping.json > /dev/null 2>&1; then
+              COUNT=1
+              jq -r '"#EXTINF:-1 tvg-logo=\"" + .tvg_logo + "\" group-title=\"Live Event\", 🔴Live Now🔴\n" + .Live_Now' mapping.json > playlist_entries.txt
+            else
+              COUNT=0
+              > playlist_entries.txt   # empty file
+            fi
+          fi
+
+          # Build header
+          {
+            echo "#EXTM3U"
+            echo "# Fancode For Bangladesh 🇧🇩"
+            echo "# Total Match: $COUNT"
+            echo "# Updated: $BD_SHORT Bangladesh Time"
+            echo "# Local Time: $BD_LONG Bangladesh Time"
+            echo "# Auto-Update Every 20 Minutes Per Hour"
+            echo "# Powered By: Sirome TV 🔴 All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source."
+          } > header.txt
+
+          # If no entries, add the "No Match" line
+          if [ "$COUNT" -eq 0 ]; then
+            echo "# ❌ No Match Available Here" > playlist_entries.txt
+          fi
+
+          # Combine header and entries
+          cat header.txt playlist_entries.txt > fancodeBD.m3u
+
+          # Cleanup
+          rm -f header.txt playlist_entries.txt bd_time_short.txt bd_time_long.txt
+
+      # Commit and push if there are changes
+      - name: Commit and push changes
+        run: |
+          cd playlist-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if fancodeBD.m3u has changed
+          if git diff --quiet fancodeBD.m3u; then
+            echo "No changes to playlist."
+          else
+            # Get Bangladesh time for commit message
+            TZ='Asia/Dhaka' date +"%Y-%m-%d %H:%M:%S" > commit_time.txt
+            COMMIT_TIME=$(cat commit_time.txt)
+            rm commit_time.txt
+
+            git add fancodeBD.m3u
+            git commit -m "🆗 FANCODE 🤖 Sports 🔄 Updated Done ✅ at $COMMIT_TIME"
+            git push origin main
+          fi
