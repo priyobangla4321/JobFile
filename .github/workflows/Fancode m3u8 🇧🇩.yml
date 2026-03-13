@@ -1,0 +1,163 @@
+name: Fancode m3u8 🇧🇩
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  update-playlist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target playlist repository (sirometv/playlist)
+        uses: actions/checkout@v4
+        with:
+          repository: sirometv/playlist
+          token: ${{ secrets.PAT_TOKEN }}
+          path: playlist-repo
+
+      - name: Download JSON data from secret URL
+        run: |
+          curl -L "${{ secrets.Fancode_2026 }}" -o fancode_data.json
+
+      - name: Get Bangladesh time
+        id: bd_time
+        run: |
+          export TZ='Asia/Dhaka'
+          BD_TIME=$(date '+%I:%M:%S%p - %d-%m-%y' | sed 's/AM/am/g; s/PM/pm/g')
+          echo "BD_TIME=$BD_TIME" >> $GITHUB_OUTPUT
+          echo "Bangladesh time: $BD_TIME"
+
+      - name: Process JSON and generate m3u8 files + mapping.json
+        run: |
+          python3 << 'EOF'
+          import json
+          import os
+          import re
+          import string
+
+          # Resolution mapping (kept for reference, but we use values from JSON's auto field)
+          RES_MAP = {
+              '240': {'bandwidth': 300000, 'resolution': '426x240'},
+              '360': {'bandwidth': 600000, 'resolution': '640x360'},
+              '480': {'bandwidth': 800000, 'resolution': '854x480'},
+              '540': {'bandwidth': 900000, 'resolution': '960x540'},
+              '720': {'bandwidth': 1500000, 'resolution': '1280x720'},
+              '1080': {'bandwidth': 3000000, 'resolution': '1920x1080'},
+              '2160': {'bandwidth': 12000000, 'resolution': '3840x2160'},
+          }
+
+          def safe_filename(title):
+              # Replace spaces with dash
+              name = title.replace(' ', '-')
+              # Replace problematic characters with dash
+              problematic = r'[\\/*?:"<>|\'^]'
+              name = re.sub(problematic, '-', name)
+              # Keep only letters, digits, dash, underscore, dot
+              allowed = set(string.ascii_letters + string.digits + '-._')
+              name = ''.join(c if c in allowed else '-' for c in name)
+              # Collapse multiple dashes
+              name = re.sub(r'-+', '-', name)
+              # Remove leading/trailing dashes/underscores/dots
+              name = name.strip('-_')
+              return name
+
+          json_file = "fancode_data.json"
+          output_dir = "playlist-repo/fancode"
+          os.makedirs(output_dir, exist_ok=True)
+
+          # Load JSON data
+          with open(json_file, 'r', encoding='utf-8') as f:
+              data = json.load(f)   # expects a dict with match_id as keys
+
+          # Remove old .m3u8 files
+          for fname in os.listdir(output_dir):
+              if fname.endswith('.m3u8'):
+                  os.remove(os.path.join(output_dir, fname))
+
+          mapping = {}
+          file_counter = 1
+
+          # Process each match
+          for match_id, details in data.items():
+              title = details.get('title', '').strip()
+              if not title:
+                  title = f"Match-{match_id}"
+              tvg_logo = details.get('tvg_logo', '')
+              tvg_language = details.get('tvg_language', '')
+              auto_playlist = details.get('auto', '')
+
+              if not auto_playlist:
+                  print(f"Skipping {match_id}: no 'auto' field")
+                  continue
+
+              # Parse the auto playlist (HLS format)
+              lines = auto_playlist.strip().split('\n')
+              stream_inf_lines = []
+              urls = []
+
+              i = 0
+              while i < len(lines):
+                  line = lines[i].strip()
+                  if line.startswith('#EXT-X-STREAM-INF:'):
+                      if i + 1 < len(lines):
+                          url_line = lines[i + 1].strip()
+                          # Replace 'in-mc-flive' with 'bd-mc-flive'
+                          url_line = url_line.replace('in-mc-flive', 'bd-mc-flive')
+                          stream_inf_lines.append(line)
+                          urls.append(url_line)
+                          i += 2
+                      else:
+                          i += 1
+                  else:
+                      i += 1
+
+              if not urls:
+                  print(f"No stream info found for {match_id}")
+                  continue
+
+              # Generate m3u8 filename from title
+              safe_name = safe_filename(title) + '.m3u8'
+              file_path = os.path.join(output_dir, safe_name)
+
+              # Write the m3u8 file
+              with open(file_path, 'w', encoding='utf-8') as f:
+                  f.write('#EXTM3U\n')
+                  for inf, url in zip(stream_inf_lines, urls):
+                      f.write(inf + '\n')
+                      f.write(url + '\n')
+                      f.write('\n')  # blank line for readability
+
+              # Build mapping entry
+              raw_base = "https://raw.githubusercontent.com/sirometv/playlist/main/fancode"
+              live_now = f"{raw_base}/{safe_name}"
+              mapping[match_id] = {
+                  "file": file_counter,
+                  "group_title": title,
+                  "tvg_logo": tvg_logo,
+                  "tvg_language": tvg_language,
+                  "Live_Now": live_now
+              }
+              file_counter += 1
+              print(f"Generated: {file_path}")
+
+          # Write mapping.json
+          mapping_path = os.path.join(output_dir, 'mapping.json')
+          with open(mapping_path, 'w', encoding='utf-8') as f:
+              json.dump(mapping, f, indent=2, ensure_ascii=False)
+          print("mapping.json created.")
+
+          EOF
+
+      - name: Commit and push changes
+        run: |
+          cd playlist-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add fancode/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🆗 Fancode - Updated ✅ ${{ steps.bd_time.outputs.BD_TIME }}"
+            git push
+          fi
