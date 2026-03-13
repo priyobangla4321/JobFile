@@ -36,21 +36,19 @@ jobs:
           BD_SHORT=$(cat bd_time_short.txt)
           BD_LONG=$(cat bd_time_long.txt)
 
-          # Count entries in mapping.json (supports both array and single object)
-          if jq -e .[0] mapping.json > /dev/null 2>&1; then
-            # It's an array
-            COUNT=$(jq '. | length' mapping.json)
-            # Extract entries
-            jq -r '.[] | "#EXTINF:-1 tvg-logo=\"" + .tvg_logo + "\" group-title=\"Live Event\", 🔴Live Now🔴\n" + .Live_Now' mapping.json > playlist_entries.txt
+          # Count entries: number of keys in the JSON object
+          COUNT=$(jq '. | length' mapping.json)
+
+          # Build playlist entries
+          if [ "$COUNT" -gt 0 ]; then
+            # Iterate over each key in the object and extract required fields
+            jq -r '
+              to_entries[] | 
+              "#EXTINF:-1 tvg-logo=\"" + .value.tvg_logo + "\" group-title=\"Live Event\", 🔴Live Now🔴\n" + 
+              .value.Live_Now
+            ' mapping.json > playlist_entries.txt
           else
-            # Single object (or empty)
-            if jq -e .tvg_logo mapping.json > /dev/null 2>&1; then
-              COUNT=1
-              jq -r '"#EXTINF:-1 tvg-logo=\"" + .tvg_logo + "\" group-title=\"Live Event\", 🔴Live Now🔴\n" + .Live_Now' mapping.json > playlist_entries.txt
-            else
-              COUNT=0
-              > playlist_entries.txt   # empty file
-            fi
+            > playlist_entries.txt   # empty file
           fi
 
           # Build header
