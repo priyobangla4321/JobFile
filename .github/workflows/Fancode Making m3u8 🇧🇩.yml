@@ -1,4 +1,4 @@
-name: Fancode m3u8 🇧🇩
+name: Fancode Making m3u8 🇧🇩
 
 on:
   schedule:
@@ -35,6 +35,7 @@ jobs:
           import os
           import re
           import string
+          import sys
 
           # Resolution mapping (kept for reference, but we use values from JSON's auto field)
           RES_MAP = {
@@ -67,8 +68,17 @@ jobs:
           os.makedirs(output_dir, exist_ok=True)
 
           # Load JSON data
-          with open(json_file, 'r', encoding='utf-8') as f:
-              data = json.load(f)   # expects a dict with match_id as keys
+          try:
+              with open(json_file, 'r', encoding='utf-8') as f:
+                  data = json.load(f)
+          except Exception as e:
+              print(f"Error loading JSON: {e}")
+              sys.exit(1)
+
+          # Check if data is a dictionary (as expected)
+          if not isinstance(data, dict):
+              print(f"Error: Expected JSON object (dict), but got {type(data)}. Content preview: {str(data)[:200]}")
+              sys.exit(1)
 
           # Remove old .m3u8 files
           for fname in os.listdir(output_dir):
@@ -80,6 +90,10 @@ jobs:
 
           # Process each match
           for match_id, details in data.items():
+              if not isinstance(details, dict):
+                  print(f"Warning: details for match_id {match_id} is not a dict, skipping. Type: {type(details)}")
+                  continue
+
               title = details.get('title', '').strip()
               if not title:
                   title = f"Match-{match_id}"
