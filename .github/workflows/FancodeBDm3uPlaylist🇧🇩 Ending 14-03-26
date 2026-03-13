@@ -1,5 +1,6 @@
 #এটির কাজ হচ্ছে সিক্রেট Fancode_2026 থেকে Extinf কপি করবে আর Fancode থেকে m3u8 লিংক কালেক্ট করবে।
 #এটি আপডেট হয় FancodeBD.m3u
+#14-03-2026 তারিখ থেকে বন্ধ
 name: FancodeBD m3u Playlist 🇧🇩
 
 on:
