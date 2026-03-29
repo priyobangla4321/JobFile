@@ -26,19 +26,19 @@ jobs:
           python-version: '3.10'
 
       - name: 📦 Install dependencies
-        run: pip install requests   # ← এই লাইনটিই আগে ছিল না, এখন যোগ করলাম
+        run: pip install requests
 
       - name: 🔄 Run playlist update script
         id: update_script
         run: |
           python3 - << 'EOF'
           import os
-          import re
           import requests
           from datetime import datetime
           from pathlib import Path
 
           # ==================== কনফিগারেশন ====================
+          # সোর্স প্লেলিস্ট (gh-pages ব্রাঞ্চ) – এখানে নতুন যোগ করুন
           SOURCES = {
               "Arabic": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Arabic.m3u",
               "France": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/France.m3u",
@@ -46,11 +46,14 @@ jobs:
               "India": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/India.m3u",
               "Afghanistan": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Afghanistan.m3u"
           }
+          # ২য় সোর্স প্লেলিস্ট (বাহ্যিক) – সঠিক raw লিংক দিন
           UPDATED_SOURCES = {
               "Arabic": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/Arabic/LiveTV.m3u",
               "France": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/France/LiveTV.m3u",
+              "Indonesia": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/Indonesia/LiveTV.m3u",
               "India": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/India/LiveTV.m3u",
-              "Afghanistan": "https://iptv-org.github.io/iptv/countries/af.m3u"
+              "Afghanistan": "https://iptv-org.github.io/iptv/countries/af.m3u",
+              # 404 দিচ্ছে – সঠিক লিংক দিন
           }
           # ====================================================
 
@@ -59,10 +62,12 @@ jobs:
                   resp = requests.get(url, timeout=30)
                   resp.raise_for_status()
                   return resp.text
-              except:
+              except Exception as e:
+                  print(f"ডাউনলোড ব্যর্থ {url}: {e}")
                   return None
 
           def parse_m3u(content):
+              """পার্স করে লিস্ট অফ টাপল (extinf_line, url_line)"""
               if not content:
                   return []
               lines = content.splitlines()
@@ -72,9 +77,7 @@ jobs:
                   line = lines[i].strip()
                   if line.startswith('#EXTINF'):
                       extinf = line
-                      url = ''
-                      if i+1 < len(lines):
-                          url = lines[i+1].strip()
+                      url = lines[i+1].strip() if i+1 < len(lines) else ''
                       entries.append((extinf, url))
                       i += 2
                   else:
@@ -86,35 +89,46 @@ jobs:
                   return None
               return extinf_line.split(',')[-1].strip()
 
-          def update_or_create_playlist(country, source_content, update_content, first_run_flag):
-              source_entries = parse_m3u(source_content) if source_content else []
-              update_entries = parse_m3u(update_content) if update_content else []
-
+          def build_playlist(country, source_entries, update_entries, first_run_flag):
+              """
+              source_entries: gh-pages থেকে পাওয়া এন্ট্রি (extinf, url)
+              update_entries: ২য় সোর্স থেকে পাওয়া এন্ট্রি (extinf, url)
+              রিটার্ন করে (playlist_content, total_channels, commit_suffix)
+              """
+              # আপডেট সোর্সের নাম → URL ম্যাপিং
               update_dict = {}
+              update_extinf_map = {}  # নাম → সম্পূর্ণ extinf লাইন (লোগো, গ্রুপ টাইটেল সহ)
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
                   if name and url:
                       update_dict[name] = url
+                      update_extinf_map[name] = extinf
 
-              matched = []
-              unmatched_src = []
-              new_from_update = []
-
+              # ===== ১ম সেকশন: gh-pages এর সব এন্ট্রি (ম্যাচিং থাকলে লিংক আপডেট হবে) =====
+              gh_section_entries = []
               for extinf, old_url in source_entries:
                   name = extract_channel_name(extinf)
                   if name and name in update_dict:
-                      matched.append((extinf, update_dict[name]))
+                      # লিংক আপডেট করব, কিন্তু EXTINF লাইন অপরিবর্তিত রাখব (tvg-logo সহ)
+                      gh_section_entries.append((extinf, update_dict[name]))
                   else:
-                      unmatched_src.append((extinf, old_url))
+                      # ম্যাচ নেই – পুরনো এন্ট্রি অপরিবর্তিত রাখব
+                      gh_section_entries.append((extinf, old_url))
 
+              # ===== ২য় সেকশন: শুধু নতুন চ্যানেল (যেগুলো gh-pages এ নেই) =====
+              source_names = {extract_channel_name(e[0]) for e in source_entries}
+              new_entries = []
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
-                  if name and name not in [extract_channel_name(e[0]) for e in source_entries]:
-                      new_from_update.append((extinf, url))
+                  if name and name not in source_names:
+                      # নতুন চ্যানেল – সম্পূর্ণ extinf (লোগো, গ্রুপ টাইটেল) + লিংক নিচের সেকশনে যাবে
+                      new_entries.append((extinf, url))
 
+              # ===== টাইমস্ট্যাম্প ও মোট চ্যানেল =====
               now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")
-              total = len(matched) + len(unmatched_src) + len(new_from_update)
+              total = len(gh_section_entries) + len(new_entries)
 
+              # ===== প্লেলিস্ট তৈরি করা =====
               final_lines = [
                   "#EXTM3U",
                   "# Sirome TV (2022-2026)",
@@ -125,36 +139,50 @@ jobs:
                   ""
               ]
 
-              for extinf, url in matched:
-                  final_lines.append(extinf)
-                  final_lines.append(url)
-              for extinf, url in unmatched_src:
-                  final_lines.append(extinf)
-                  final_lines.append(url)
+              # ১ম সেকশন: Gh-Pages (উপরে)
+              if gh_section_entries:
+                  final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                  final_lines.append("# 🔴🔴🔴🔴 This Channels Update From Gh-Pages 🔴🔴🔴🔴")
+                  for extinf, url in gh_section_entries:
+                      final_lines.append(extinf)
+                      final_lines.append(url)
+                  final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Channel End Here 🔴🔴🔴🔴")
+                  final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                  final_lines.append("")
 
-              if new_from_update:
-                  final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                  final_lines.append("#🔴🔴 GH-Page এ নিচের চ্যানেল গুলো নেই")
-                  for extinf, url in new_from_update:
+              # ২য় সেকশন: নতুন সোর্স থেকে আপডেট
+              if new_entries:
+                  final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                  final_lines.append("# 🔴🔴🔴🔴 Update From Source Playlist 🔴🔴🔴🔴")
+                  for extinf, url in new_entries:
                       final_lines.append(extinf)
                       final_lines.append(url)
 
+              # কমিট সাফিক্স নির্ধারণ
+              event_name = os.getenv("GITHUB_EVENT_NAME")
               if first_run_flag:
                   suffix = "🆕 Start 🆕"
-              elif os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
+              elif event_name == "workflow_dispatch":
                   suffix = "🆕 Start Done ✅"
               else:
-                  suffix = "🔄 Updated Done ✅"
+                  suffix = "🔄 Schedule Done ✅"
 
               return "\n".join(final_lines), total, suffix
 
-          # মূল কাজ শুরু
+          # ==================== মূল প্রোগ্রাম ====================
+          # প্রতিটি দেশের জন্য আলাদা কমিট করতে চাই, তাই লুপের ভেতর git কমান্ড চালাব
+          # আগে git config সেট করি
+          os.system('git config user.name "github-actions[bot]"')
+          os.system('git config user.email "github-actions[bot]@users.noreply.github.com"')
+
           for country in SOURCES:
-              print(f"Processing {country}...")
+              print(f"\n🔹 প্রসেসিং {country}...")
+
               src_url = SOURCES[country]
               upd_url = UPDATED_SOURCES.get(country)
+
               if not upd_url:
-                  print(f"⚠️ {country} এর জন্য ২য় সোর্স নেই, স্কিপ।")
+                  print(f"⚠️ {country} এর জন্য ২য় সোর্স নেই, স্কিপ করা হচ্ছে।")
                   continue
 
               src_content = download_playlist(src_url)
@@ -167,27 +195,37 @@ jobs:
                   print(f"❌ {country} আপডেট সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
                   continue
 
+              src_entries = parse_m3u(src_content)
+              upd_entries = parse_m3u(upd_content)
+
+              # প্রথম রান চেক: main ব্রাঞ্চে ফাইল আগে আছে কিনা
               file_exists = Path(f"{country}.m3u").exists()
-              new_content, total, suffix = update_or_create_playlist(
-                  country, src_content, upd_content, first_run_flag=not file_exists
+              new_content, total, suffix = build_playlist(
+                  country, src_entries, upd_entries, first_run_flag=not file_exists
               )
 
+              # ফাইল সেভ
               with open(f"{country}.m3u", "w", encoding="utf-8") as f:
                   f.write(new_content)
 
+              # এই দেশের জন্য আলাদা কমিট
+              commit_msg = f"🆗 {country} : {suffix}"
+              os.system(f'git add {country}.m3u')
+              # চেক করুন যে ফাইল পরিবর্তিত হয়েছে কিনা
+              status = os.popen('git status --porcelain').read()
+              if country+".m3u" in status:
+                  os.system(f'git commit -m "{commit_msg}"')
+                  print(f"✅ {country} কমিট করা হয়েছে: {commit_msg}")
+              else:
+                  print(f"ℹ️ {country} তে কোনো পরিবর্তন নেই, কমিট বাদ।")
+
               print(f"✅ {country} আপডেট সম্পন্ন। মোট চ্যানেল: {total}")
 
+          # সব কমিট একসাথে পুশ করি
+          os.system('git push origin main')
+          print("🎉 সব পরিবর্তন পুশ করা হয়েছে।")
           EOF
 
-      - name: 📝 Commit and push changes
+      - name: 📝 Final push (if any pending)
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add *.m3u
-          if git diff --staged --quiet; then
-            echo "কোনো পরিবর্তন নেই, কমিট বন্ধ থাকছে।"
-          else
-            COMMIT_MSG="🆗 Multiple countries : 🔄 Updated Done ✅"
-            git commit -m "$COMMIT_MSG"
-            git push origin main
-          fi
+          git push origin main || echo "No changes to push"
