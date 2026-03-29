@@ -47,8 +47,8 @@ jobs:
           }
           UPDATED_SOURCES = {
               "Arabic": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/Arabic/LiveTV.m3u",
-              "France": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/France/LiveTV.m3u",
               "Indonesia": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/Indonesia/LiveTV.m3u",
+              "France": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/France/LiveTV.m3u",
               "India": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/India/LiveTV.m3u",
               "Afghanistan": "https://iptv-org.github.io/iptv/countries/af.m3u",
               # 404 – সঠিক লিংক দিন
@@ -132,33 +132,32 @@ jobs:
                   f"# Total Channel Found: {total} Channel",
                   "# 🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।",
                   "# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.",
-                  ""  # একটি ফাঁকা লাইন
+                  ""  # হেডারের শেষে একটি ফাঁকা লাইন (ঐচ্ছিক, কিন্তু উদাহরণে আছে)
               ]
 
               # ===== Gh-Pages সেকশন (শুধু থাকলেই) =====
               if gh_entries:
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
                   final_lines.append("# 🔴🔴🔴🔴 This Channels Update From Gh-Pages 🔴🔴🔴🔴")
-                  final_lines.append("")  # হেডারের পর ফাঁকা লাইন
+                  # এখানে কোনো ফাঁকা লাইন নেই (উদাহরণ অনুযায়ী)
                   for extinf, url in gh_entries:
-                      final_lines.append(extinf)
-                      final_lines.append("")   # #EXTINF ও URL এর মাঝে ফাঁকা লাইন
-                      final_lines.append(url)
-                      final_lines.append("")   # প্রতিটি চ্যানেলের পর ফাঁকা লাইন
+                      final_lines.append(extinf)      # #EXTINF লাইন
+                      final_lines.append(url)         # URL (পরের লাইনে)
+                      final_lines.append("")          # URL-এর পর ফাঁকা লাইন
                   final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Channel End Here 🔴🔴🔴🔴")
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                  final_lines.append("")  # সেকশন শেষে ফাঁকা লাইন
+                  # শেষের লাল লাইনের পর কোনো ফাঁকা লাইন নেই (উদাহরণে নেই)
 
               # ===== নতুন চ্যানেল সেকশন (শুধু থাকলেই) =====
               if new_entries:
+                  # আগের সেকশনের শেষ লাল লাইনের পর কোনো ফাঁকা লাইন নেই, তাই সরাসরি নতুন হেডার
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
                   final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Not Found Thats Channels, Now New Channel Added from 2nd Sourch 🔴🔴🔴🔴")
-                  final_lines.append("")  # হেডারের পর ফাঁকা লাইন
+                  # এখানেও কোনো ফাঁকা লাইন নেই
                   for extinf, url in new_entries:
                       final_lines.append(extinf)
-                      final_lines.append("")   # #EXTINF ও URL এর মাঝে ফাঁকা লাইন
                       final_lines.append(url)
-                      final_lines.append("")   # প্রতিটি চ্যানেলের পর ফাঁকা লাইন
+                      final_lines.append("")          # URL-এর পর ফাঁকা লাইন
 
               # কমিট সাফিক্স নির্ধারণ
               event_name = os.getenv("GITHUB_EVENT_NAME")
@@ -169,7 +168,7 @@ jobs:
               else:
                   suffix = "🔄 Schedule Done ✅"
 
-              # শেষের অপ্রয়োজনীয় ফাঁকা লাইন বাদ দিতে স্ট্রিপ
+              # ফাইলের শেষে কোনো অতিরিক্ত ফাঁকা লাইন না রাখতে rstrip
               return "\n".join(final_lines).rstrip() + "\n", total, suffix
 
           # ==================== মূল প্রোগ্রাম ====================
