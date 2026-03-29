@@ -1,13 +1,12 @@
-name: Country Channel 🍀
+name: "Country Channel 🍀"
 
 on:
   schedule:
-    # প্রতি 6 ঘণ্টা পর পর (ক্রন এক্সপ্রেশন)
     - cron: "0 */6 * * *"
-  workflow_dispatch:  # ম্যানুয়াল রানের জন্য
+  workflow_dispatch:
 
 env:
-  TZ: "Asia/Dhaka"   # বাংলাদেশ সময় ব্যবহারের জন্য
+  TZ: "Asia/Dhaka"
 
 jobs:
   update-playlists:
@@ -19,12 +18,15 @@ jobs:
         with:
           repository: sirometv/playlist
           token: ${{ secrets.PAT_TOKEN }}
-          fetch-depth: 0   # সব ব্রাঞ্চ ও ইতিহাস পেতে
+          fetch-depth: 0
 
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - name: 📦 Install dependencies
+        run: pip install requests   # ← এই লাইনটিই আগে ছিল না, এখন যোগ করলাম
 
       - name: 🔄 Run playlist update script
         id: update_script
@@ -37,7 +39,6 @@ jobs:
           from pathlib import Path
 
           # ==================== কনফিগারেশন ====================
-          # সোর্স প্লেলিস্ট (gh-pages ব্রাঞ্চ) – এখানে আপনি নতুন যোগ করতে পারেন
           SOURCES = {
               "Arabic": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Arabic.m3u",
               "France": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/France.m3u",
@@ -45,7 +46,6 @@ jobs:
               "India": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/India.m3u",
               "Afghanistan": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Afghanistan.m3u"
           }
-          # ২য় সোর্স প্লেলিস্ট (বাহ্যিক) – এখানে নতুন যোগ করুন
           UPDATED_SOURCES = {
               "Arabic": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/Arabic/LiveTV.m3u",
               "France": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/France/LiveTV.m3u",
@@ -55,7 +55,6 @@ jobs:
           # ====================================================
 
           def download_playlist(url):
-              """URL থেকে প্লেলিস্ট ডাউনলোড করে টেক্সট রিটার্ন করে"""
               try:
                   resp = requests.get(url, timeout=30)
                   resp.raise_for_status()
@@ -64,10 +63,6 @@ jobs:
                   return None
 
           def parse_m3u(content):
-              """
-              m3u পার্স করে প্রতিটি এন্ট্রির (EXTINF লাইন + URL) একটি লিস্ট রিটার্ন করে।
-              প্রতিটি এন্ট্রি হবে tuple: (extinf_line, url_line)
-              """
               if not content:
                   return []
               lines = content.splitlines()
@@ -87,62 +82,49 @@ jobs:
               return entries
 
           def extract_channel_name(extinf_line):
-              """EXTINF লাইন থেকে চ্যানেলের নাম বের করে (কমার পরের অংশ)"""
-              # উদাহরণ: #EXTINF:-1 tvg-id="..." tvg-logo="..." group-title="...",Channel Name
               if ',' not in extinf_line:
                   return None
-              name = extinf_line.split(',')[-1].strip()
-              return name
+              return extinf_line.split(',')[-1].strip()
 
           def update_or_create_playlist(country, source_content, update_content, first_run_flag):
-              """
-              প্রধান লজিক: gh-pages এর এন্ট্রি + আপডেট সোর্স ম্যাচিং
-              রিটার্ন করে (new_playlist_content, total_channels, commit_message_suffix)
-              """
               source_entries = parse_m3u(source_content) if source_content else []
               update_entries = parse_m3u(update_content) if update_content else []
 
-              # আপডেট সোর্সের নাম → URL ম্যাপিং
               update_dict = {}
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
                   if name and url:
                       update_dict[name] = url
 
-              matched = []      # (original_extinf, updated_url) যেখানে ম্যাচ পেয়েছে
-              unmatched_src = [] # gh-pages এর এন্ট্রি যাদের নাম আপডেট সোর্সে নেই (লিংক অপরিবর্তিত থাকবে)
-              new_from_update = [] # আপডেট সোর্সের এন্ট্রি যাদের নাম gh-pages এ নেই
+              matched = []
+              unmatched_src = []
+              new_from_update = []
 
-              # ১. gh-pages এর এন্ট্রি প্রসেস
               for extinf, old_url in source_entries:
                   name = extract_channel_name(extinf)
                   if name and name in update_dict:
-                      # লিংক আপডেট করব, কিন্তু EXTINF লাইন অপরিবর্তিত (tvg-logo সহ) রাখব
                       matched.append((extinf, update_dict[name]))
                   else:
-                      # ম্যাচ নেই – পুরনো এন্ট্রি অপরিবর্তিত রাখব
                       unmatched_src.append((extinf, old_url))
 
-              # ২. আপডেট সোর্সের নতুন এন্ট্রি (যেগুলো gh-pages এ নেই)
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
                   if name and name not in [extract_channel_name(e[0]) for e in source_entries]:
                       new_from_update.append((extinf, url))
 
-              # ৩. চূড়ান্ত প্লেলিস্ট তৈরি
-              final_lines = []
-              # হেডার অংশ
-              now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")  # 10:52:33pm  -  29-03-2026 ফরম্যাট
+              now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")
               total = len(matched) + len(unmatched_src) + len(new_from_update)
-              final_lines.append("#EXTM3U")
-              final_lines.append("# Sirome TV (2022-2026)")
-              final_lines.append(f"# Update Time: {now}")
-              final_lines.append(f"# Total Channel Found: {total} Channel")
-              final_lines.append("# 🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।")
-              final_lines.append("# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.")
-              final_lines.append("")  # একটি ফাঁকা লাইন
 
-              # ম্যাচ করা ও আনম্যাচড এন্ট্রি (মূল প্লেলিস্ট অংশ)
+              final_lines = [
+                  "#EXTM3U",
+                  "# Sirome TV (2022-2026)",
+                  f"# Update Time: {now}",
+                  f"# Total Channel Found: {total} Channel",
+                  "# 🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।",
+                  "# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.",
+                  ""
+              ]
+
               for extinf, url in matched:
                   final_lines.append(extinf)
                   final_lines.append(url)
@@ -150,7 +132,6 @@ jobs:
                   final_lines.append(extinf)
                   final_lines.append(url)
 
-              # নতুন এন্ট্রি অংশ – সেকশন হেডার সহ
               if new_from_update:
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
                   final_lines.append("#🔴🔴 GH-Page এ নিচের চ্যানেল গুলো নেই")
@@ -158,7 +139,6 @@ jobs:
                       final_lines.append(extinf)
                       final_lines.append(url)
 
-              # কমিট মেসেজের জন্য সাফিক্স নির্ধারণ
               if first_run_flag:
                   suffix = "🆕 Start 🆕"
               elif os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch":
@@ -169,16 +149,12 @@ jobs:
               return "\n".join(final_lines), total, suffix
 
           # মূল কাজ শুরু
-          first_run = False  # ধরা যাক, main ব্রাঞ্চে ফাইল নেই কি না চেক করে true/false সেট করতে পারেন
-          # তবে এখানে সহজতার জন্য আমরা ধরে নিচ্ছি যে প্রথম রান না – আপনি চাইলে যুক্তি যোগ করতে পারেন
-          # যেমন: for country in SOURCES: if not Path(f"{country}.m3u").exists(): first_run=True
-
           for country in SOURCES:
               print(f"Processing {country}...")
               src_url = SOURCES[country]
               upd_url = UPDATED_SOURCES.get(country)
               if not upd_url:
-                  print(f"⚠️ {country} এর জন্য ২য় সোর্স নেই, স্কিপ করা হচ্ছে।")
+                  print(f"⚠️ {country} এর জন্য ২য় সোর্স নেই, স্কিপ।")
                   continue
 
               src_content = download_playlist(src_url)
@@ -191,20 +167,13 @@ jobs:
                   print(f"❌ {country} আপডেট সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
                   continue
 
-              # প্রথম রান চেক: main ব্রাঞ্চে এই দেশের ফাইল আগে আছে কিনা
               file_exists = Path(f"{country}.m3u").exists()
               new_content, total, suffix = update_or_create_playlist(
                   country, src_content, upd_content, first_run_flag=not file_exists
               )
 
-              # ফাইল সংরক্ষণ
               with open(f"{country}.m3u", "w", encoding="utf-8") as f:
                   f.write(new_content)
-
-              # কমিট মেসেজের জন্য আউটপুট সেট (GitHub Actions step output-এ রাখা)
-              commit_msg = f"🆗 {country} : {suffix}"
-              with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
-                  print(f"commit_msg_{country}={commit_msg}", file=fh)
 
               print(f"✅ {country} আপডেট সম্পন্ন। মোট চ্যানেল: {total}")
 
@@ -214,12 +183,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # প্রতিটি দেশের জন্য আলাদা কমিট করতে চাইলে লুপ চালাতে পারেন, তবে সব ফাইল একসাথেও করা যায়
           git add *.m3u
           if git diff --staged --quiet; then
             echo "কোনো পরিবর্তন নেই, কমিট বন্ধ থাকছে।"
           else
-            # একটি কমিট মেসেজ তৈরি করি (সব দেশের জন্য একসাথে)
             COMMIT_MSG="🆗 Multiple countries : 🔄 Updated Done ✅"
             git commit -m "$COMMIT_MSG"
             git push origin main
