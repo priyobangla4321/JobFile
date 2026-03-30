@@ -34,6 +34,7 @@ jobs:
           python3 - << 'EOF'
           import os
           import requests
+          import re
           from datetime import datetime
           from pathlib import Path
 
@@ -53,7 +54,6 @@ jobs:
               "India": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/India/LiveTV.m3u",
               "Afghanistan": "https://iptv-org.github.io/iptv/countries/af.m3u",
               "Sports1": "https://iptv-org.github.io/iptv/categories/sports.m3u"
-              # 404 – সঠিক লিংক দিন
           }
           # ====================================================
 
@@ -65,6 +65,37 @@ jobs:
               except Exception as e:
                   print(f"ডাউনলোড ব্যর্থ {url}: {e}")
                   return None
+
+          def clean_updated_m3u(content):
+              """
+              UPDATED_SOURCES থেকে আসা m3u কন্টেন্ট পরিষ্কার করে:
+              - #EXTVLCOPT লাইন বাদ দেয়
+              - #EXTINF লাইন থেকে http-user-agent="..." অ্যাট্রিবিউট সরিয়ে দেয়
+              """
+              lines = content.splitlines()
+              new_lines = []
+              i = 0
+              while i < len(lines):
+                  line = lines[i].rstrip()
+                  if line.startswith('#EXTINF'):
+                      # http-user-agent অ্যাট্রিবিউট সরানো
+                      cleaned = re.sub(r'\s*http-user-agent="[^"]*"\s*', ' ', line)
+                      cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+                      new_lines.append(cleaned)
+                      i += 1
+                      # পরবর্তী #EXTVLCOPT লাইনগুলো স্কিপ
+                      while i < len(lines) and lines[i].startswith('#EXTVLCOPT'):
+                          i += 1
+                      # এখন পরের লাইনটি URL হওয়া উচিত
+                      if i < len(lines):
+                          url_line = lines[i].strip()
+                          new_lines.append(url_line)
+                          i += 1
+                      # যদি URL না থাকে তবে কিছুই করব না
+                  else:
+                      new_lines.append(line)
+                      i += 1
+              return '\n'.join(new_lines)
 
           def parse_m3u(content):
               entries = []
@@ -91,7 +122,7 @@ jobs:
           def build_playlist(country, source_entries, update_entries, first_run_flag):
               """
               source_entries: gh-pages থেকে পাওয়া এন্ট্রি
-              update_entries: ২য় সোর্স থেকে পাওয়া এন্ট্রি
+              update_entries: ২য় সোর্স থেকে পাওয়া এন্ট্রি (ইতিমধ্যে পরিষ্কার করা)
               """
               # ২য় সোর্সের নাম → URL ও পুরো EXTINF লাইন ম্যাপ
               update_url_map = {}
@@ -193,6 +224,9 @@ jobs:
               if src_content is None or upd_content is None:
                   print(f"❌ {country} সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
                   continue
+
+              # UPDATED_SOURCES কে পরিষ্কার করি
+              upd_content = clean_updated_m3u(upd_content)
 
               src_entries = parse_m3u(src_content)
               upd_entries = parse_m3u(upd_content)
