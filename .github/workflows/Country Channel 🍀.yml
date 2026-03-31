@@ -45,7 +45,8 @@ jobs:
               "Indonesia": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Indonesia.m3u",
               "India": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/India.m3u",
               "Afghanistan": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Afghanistan.m3u",
-              "Sports1": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Sports1.m3u"
+              "Sports1": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/Sports1.m3u",
+              "China": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/China.m3u"
           }
           UPDATED_SOURCES = {
               "Arabic": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/Arabic/LiveTV.m3u",
@@ -53,7 +54,8 @@ jobs:
               "France": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/France/LiveTV.m3u",
               "India": "https://raw.githubusercontent.com/bugsfreeweb/LiveTVCollector/main/LiveTV/India/LiveTV.m3u",
               "Afghanistan": "https://iptv-org.github.io/iptv/countries/af.m3u",
-              "Sports1": "https://iptv-org.github.io/iptv/categories/sports.m3u"
+              "Sports1": "https://iptv-org.github.io/iptv/categories/sports.m3u",
+              "China": "https://github.com/bugsfreeweb/LiveTVCollector/blob/main/LiveTV/China/LiveTV.m3u"
           }
           # ====================================================
 
