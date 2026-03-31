@@ -64,6 +64,7 @@ jobs:
               - () ব্র্যাকেটের ভেতর শুধু পিক্সেল (যেমন (720p)) থাকলে বাদ দেয়।
               - [] ব্র্যাকেটের ভেতর Geo‑সংক্রান্ত শব্দ (Geo‑Blocked, Geo Blocked, ইত্যাদি) থাকলে বাদ দেয়।
               - কিন্তু () বা [] এর ভেতর HD, hd, Low, low, M, m ইত্যাদি থাকলে সেগুলো রাখে।
+              - এছাড়া group-title="...", Name ফরম্যাটে কমার পরে একটি স্পেস যোগ করে।
               """
               if ',' not in extinf_line:
                   return extinf_line
@@ -81,39 +82,34 @@ jobs:
               keep_re = re.compile('|'.join(keep_patterns), re.IGNORECASE)
               
               # 1. প্রথমে সব () ব্লক খুঁজে বের করি
-              #    regex: \( ( [^)]* ) \)
-              #    যদি ভেতরের কন্টেন্ট শুধু সংখ্যা+p হয় (যেমন 720p) তবে পুরো ব্লক বাদ; অন্যথায় যদি keep_patterns এর সাথে মেলে তবে রাখি, নাহলে বাদ দেই (অজানা ট্যাগ বাদ)
               def process_parentheses(match):
                   inner = match.group(1).strip()
-                  # যদি ভেতরে শুধু সংখ্যা+p হয়
                   if re.fullmatch(r'\d+p', inner, re.IGNORECASE):
-                      return ''  # পুরো ব্লক বাদ
-                  # যদি keep_patterns এর সাথে মেলে
+                      return ''
                   if keep_re.search(match.group(0)):
-                      return match.group(0)  # ব্লক রেখে দিই
+                      return match.group(0)
                   else:
-                      return ''  # অজানা () ব্লক বাদ
+                      return ''
               
               name = re.sub(r'\(([^)]*)\)', process_parentheses, name)
               
               # 2. [] ব্লক পরিষ্কার
-              #    [] এর ভেতরে Geo সংক্রান্ত শব্দ থাকলে পুরো ব্লক বাদ, নাহলে keep_patterns চেক
               def process_brackets(match):
                   inner = match.group(1).strip()
-                  # Geo সংক্রান্ত শব্দ চেক (geo, blocked ইত্যাদি)
                   if re.search(r'geo\s*-?\s*blocked?', inner, re.IGNORECASE):
-                      return ''  # পুরো ব্লক বাদ
-                  # যদি keep_patterns এর সাথে মেলে
+                      return ''
                   if keep_re.search(match.group(0)):
                       return match.group(0)
                   else:
-                      return ''  # অজানা [] ব্লক বাদ
+                      return ''
               
               name = re.sub(r'\[([^\]]*)\]', process_brackets, name)
               
               # অতিরিক্ত স্পেস পরিষ্কার
               name = re.sub(r'\s+', ' ', name).strip()
-              return f"{prefix},{name}"
+              
+              # কমার পরে একটি স্পেস যোগ করে ফিরিয়ে দেওয়া
+              return f"{prefix}, {name}"
           # -----------------------------------------
 
           def download_playlist(url):
@@ -138,17 +134,13 @@ jobs:
               while i < len(lines):
                   line = lines[i].rstrip()
                   if line.startswith('#EXTINF'):
-                      # http-user-agent অ্যাট্রিবিউট সরানো
                       cleaned = re.sub(r'\s*http-user-agent="[^"]*"\s*', ' ', line)
                       cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-                      # চ্যানেলের নাম পরিষ্কার করা
                       cleaned = clean_channel_name(cleaned)
                       new_lines.append(cleaned)
                       i += 1
-                      # পরবর্তী #EXTVLCOPT লাইনগুলো স্কিপ
                       while i < len(lines) and lines[i].startswith('#EXTVLCOPT'):
                           i += 1
-                      # এখন পরের লাইনটি URL হওয়া উচিত
                       if i < len(lines):
                           url_line = lines[i].strip()
                           new_lines.append(url_line)
@@ -185,27 +177,21 @@ jobs:
               source_entries: gh-pages থেকে পাওয়া এন্ট্রি
               update_entries: ২য় সোর্স থেকে পাওয়া এন্ট্রি (ইতিমধ্যে পরিষ্কার করা)
               """
-              # ২য় সোর্সের নাম → URL ও পুরো EXTINF লাইন ম্যাপ (নাম পরিষ্কার করে ম্যাপ করা)
               update_url_map = {}
-              update_extinf_map = {}
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
                   if name and url:
                       update_url_map[name] = url
-                      update_extinf_map[name] = extinf
 
-              # ===== ১. Gh-Pages সেকশন (সব চ্যানেলই এখানে) =====
+              # ===== ১. Gh-Pages সেকশন =====
               gh_entries = []
               for extinf, old_url in source_entries:
-                  # পুরনো এন্ট্রির নামও পরিষ্কার করি
                   cleaned_extinf = clean_channel_name(extinf)
                   name = extract_channel_name(cleaned_extinf)
-                  # নামের সাথে ম্যাচ খোঁজা (উভয় পাশে পরিষ্কার করে)
                   matched_url = None
                   if name:
                       cleaned_name = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', name, flags=re.IGNORECASE).strip()
                       for n, u in update_url_map.items():
-                          # উভয় পাশের নাম পরিষ্কার করে তুলনা
                           n_clean = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', n, flags=re.IGNORECASE).strip()
                           if cleaned_name == n_clean:
                               matched_url = u
@@ -215,7 +201,7 @@ jobs:
                   else:
                       gh_entries.append((cleaned_extinf, old_url))
 
-              # ===== ২. নতুন চ্যানেল (যা gh-pages এ নেই) =====
+              # ===== ২. নতুন চ্যানেল =====
               source_names = set()
               for extinf, _ in source_entries:
                   cleaned = clean_channel_name(extinf)
@@ -231,11 +217,11 @@ jobs:
                       if cleaned_name not in source_names:
                           new_entries.append((clean_channel_name(extinf), url))
 
-              # ===== টাইমস্ট্যাম্প ও মোট চ্যানেল =====
+              # ===== টাইমস্ট্যাম্প ও মোট =====
               now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")
               total = len(gh_entries) + len(new_entries)
 
-              # ===== প্লেলিস্ট হেডার (স্থির) =====
+              # ===== প্লেলিস্ট হেডার =====
               final_lines = [
                   "#EXTM3U",
                   "# Sirome TV (2022-2026)",
@@ -243,40 +229,36 @@ jobs:
                   f"# Total Channel Found: {total} Channel",
                   "# 🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।",
                   "# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.",
-                  ""  # হেডারের শেষে একটি ফাঁকা লাইন
+                  ""
               ]
 
               # ===== Gh-Pages সেকশন =====
               if gh_entries:
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
                   final_lines.append("# 🔴🔴🔴🔴 This Channels List Update From Gh-Pages 🔴🔴🔴🔴")
-                  # ৩টি ফাঁকা লাইন
                   final_lines.append("")
                   final_lines.append("")
                   final_lines.append("")
                   for extinf, url in gh_entries:
                       final_lines.append(extinf)
                       final_lines.append(url)
-                      final_lines.append("")          # URL-এর পর ফাঁকা লাইন
+                      final_lines.append("")
                   final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Channel End Here 🔴🔴🔴🔴")
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                  # শেষের লাল লাইনের পর ৩টি ফাঁকা লাইন (আগের নিয়ম)
                   final_lines.append("")
                   final_lines.append("")
                   final_lines.append("")
 
               # ===== নতুন চ্যানেল সেকশন =====
               if new_entries:
-                  # ২টি ফাঁকা লাইন
                   final_lines.append("")
                   final_lines.append("")
                   final_lines.append("#🟡🟡🟡🟡 Gh-Pages Not Found Thats Channels, Now New Channel Added from 2nd Sourch 🟡🟡🟡🟡")
                   for extinf, url in new_entries:
                       final_lines.append(extinf)
                       final_lines.append(url)
-                      final_lines.append("")          # URL-এর পর ফাঁকা লাইন
+                      final_lines.append("")
 
-              # কমিট সাফিক্স নির্ধারণ
               event_name = os.getenv("GITHUB_EVENT_NAME")
               if first_run_flag:
                   suffix = "🆕 Start 🆕"
@@ -285,7 +267,6 @@ jobs:
               else:
                   suffix = "🔄 Schedule Done ✅"
 
-              # ফাইলের শেষে কোনো অতিরিক্ত ফাঁকা লাইন না রাখতে rstrip
               return "\n".join(final_lines).rstrip() + "\n", total, suffix
 
           # ==================== মূল প্রোগ্রাম ====================
@@ -309,7 +290,6 @@ jobs:
                   print(f"❌ {country} সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
                   continue
 
-              # UPDATED_SOURCES কে পরিষ্কার করি (এতে নাম পরিষ্কারও অন্তর্ভুক্ত)
               upd_content = clean_updated_m3u(upd_content)
 
               src_entries = parse_m3u(src_content)
@@ -323,7 +303,6 @@ jobs:
               with open(f"{country}.m3u", "w", encoding="utf-8") as f:
                   f.write(new_content)
 
-              # আলাদা কমিট
               commit_msg = f"🆗 {country} : {suffix}"
               os.system(f'git add {country}.m3u')
               status = os.popen('git status --porcelain').read()
@@ -333,7 +312,6 @@ jobs:
               else:
                   print(f"ℹ️ {country} তে কোনো পরিবর্তন নেই, কমিট বাদ।")
 
-          # সব কমিট একসাথে পুশ
           os.system('git push origin main')
           print("🎉 সব পরিবর্তন পুশ করা হয়েছে।")
           EOF
