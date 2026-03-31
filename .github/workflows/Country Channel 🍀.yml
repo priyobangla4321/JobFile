@@ -1,4 +1,4 @@
-name: "Country Channel 🍀"
+name: Country Channel 🍀
 
 on:
   schedule:
@@ -57,6 +57,34 @@ jobs:
           }
           # ====================================================
 
+          # ---------- নাম পরিষ্কারের ফাংশন ----------
+          def clean_channel_name(extinf_line):
+              """
+              #EXTINF লাইন থেকে চ্যানেলের নামের ভিতর থেকে নির্দিষ্ট টেক্সট (যেমন (720p), [Geo-Blocked] ইত্যাদি) বাদ দেয়।
+              ইউজার ইচ্ছামতো নিচের bad_patterns লিস্টে আরও শব্দ যোগ করতে পারেন।
+              """
+              if ',' not in extinf_line:
+                  return extinf_line
+              prefix, name = extinf_line.split(',', 1)
+              
+              # যেসব প্যাটার্ন বাদ দিতে হবে (এখানে ইউজার নিজের মতো যোগ/বাদ দিতে পারেন)
+              bad_patterns = [
+                  r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*',          # [Geo-Blocked], [Geo Blocked], [GeoBlocked]
+                  r'\s*\[\s*Not 24/7\s*\]\s*',                       # [Not 24/7]
+                  r'\s*\(\d+p\)\s*',                                 # (480p), (720p) ইত্যাদি
+                  r'\s*\(\d+p\)\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*', # (720p) [Geo-Blocked]
+                  r'\s*\(\d+p\)\s*\[\s*Not 24/7\s*\]\s*',            # (720p) [Not 24/7]
+              ]
+              
+              cleaned = name
+              for pat in bad_patterns:
+                  cleaned = re.sub(pat, '', cleaned)
+              
+              # অতিরিক্ত স্পেস কমিয়ে ফেলা
+              cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+              return f"{prefix},{cleaned}"
+          # -----------------------------------------
+
           def download_playlist(url):
               try:
                   resp = requests.get(url, timeout=30)
@@ -71,6 +99,7 @@ jobs:
               UPDATED_SOURCES থেকে আসা m3u কন্টেন্ট পরিষ্কার করে:
               - #EXTVLCOPT লাইন বাদ দেয়
               - #EXTINF লাইন থেকে http-user-agent="..." অ্যাট্রিবিউট সরিয়ে দেয়
+              - চ্যানেলের নাম থেকে অবাঞ্ছিত টেক্সট বাদ দেয় (clean_channel_name)
               """
               lines = content.splitlines()
               new_lines = []
@@ -81,6 +110,8 @@ jobs:
                       # http-user-agent অ্যাট্রিবিউট সরানো
                       cleaned = re.sub(r'\s*http-user-agent="[^"]*"\s*', ' ', line)
                       cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+                      # চ্যানেলের নাম পরিষ্কার করা
+                      cleaned = clean_channel_name(cleaned)
                       new_lines.append(cleaned)
                       i += 1
                       # পরবর্তী #EXTVLCOPT লাইনগুলো স্কিপ
@@ -91,7 +122,6 @@ jobs:
                           url_line = lines[i].strip()
                           new_lines.append(url_line)
                           i += 1
-                      # যদি URL না থাকে তবে কিছুই করব না
                   else:
                       new_lines.append(line)
                       i += 1
@@ -124,7 +154,7 @@ jobs:
               source_entries: gh-pages থেকে পাওয়া এন্ট্রি
               update_entries: ২য় সোর্স থেকে পাওয়া এন্ট্রি (ইতিমধ্যে পরিষ্কার করা)
               """
-              # ২য় সোর্সের নাম → URL ও পুরো EXTINF লাইন ম্যাপ
+              # ২য় সোর্সের নাম → URL ও পুরো EXTINF লাইন ম্যাপ (নাম পরিষ্কার করে ম্যাপ করা)
               update_url_map = {}
               update_extinf_map = {}
               for extinf, url in update_entries:
@@ -137,21 +167,32 @@ jobs:
               gh_entries = []
               for extinf, old_url in source_entries:
                   name = extract_channel_name(extinf)
-                  if name and name in update_url_map:
-                      # লিংক আপডেট হবে, EXTINF অপরিবর্তিত
-                      gh_entries.append((extinf, update_url_map[name]))
+                  # নাম পরিষ্কার করে ম্যাচ করানো
+                  cleaned_name = name
+                  if name:
+                      # পরিষ্কার করা নামের সাথে ম্যাপিং চেক
+                      matched_url = None
+                      for n, u in update_url_map.items():
+                          # উভয় পাশের নাম পরিষ্কার করে তুলনা
+                          if re.sub(r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*|\s*\[\s*Not 24/7\s*\]\s*|\s*\(\d+p\)\s*', '', n).strip() == re.sub(r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*|\s*\[\s*Not 24/7\s*\]\s*|\s*\(\d+p\)\s*', '', name).strip():
+                              matched_url = u
+                              break
+                      if matched_url:
+                          gh_entries.append((clean_channel_name(extinf), matched_url))
+                      else:
+                          gh_entries.append((clean_channel_name(extinf), old_url))
                   else:
-                      # ম্যাচ নেই – পুরনো লিংক থাকবে
-                      gh_entries.append((extinf, old_url))
+                      gh_entries.append((clean_channel_name(extinf), old_url))
 
               # ===== ২. নতুন চ্যানেল (যা gh-pages এ নেই) =====
-              source_names = {extract_channel_name(e[0]) for e in source_entries if extract_channel_name(e[0])}
+              source_names = {extract_channel_name(clean_channel_name(e[0])) for e in source_entries if extract_channel_name(e[0])}
               new_entries = []
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
-                  if name and name not in source_names:
-                      # পুরো EXTINF (লোগো, গ্রুপ টাইটেল) + URL নতুন সেকশনে যাবে
-                      new_entries.append((extinf, url))
+                  if name:
+                      cleaned_name = re.sub(r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*|\s*\[\s*Not 24/7\s*\]\s*|\s*\(\d+p\)\s*', '', name).strip()
+                      if cleaned_name not in source_names:
+                          new_entries.append((clean_channel_name(extinf), url))
 
               # ===== টাইমস্ট্যাম্প ও মোট চ্যানেল =====
               now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")
@@ -165,28 +206,30 @@ jobs:
                   f"# Total Channel Found: {total} Channel",
                   "# 🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।",
                   "# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.",
-                  ""  # হেডারের শেষে একটি ফাঁকা লাইন (ঐচ্ছিক, কিন্তু উদাহরণে আছে)
+                  ""  # হেডারের শেষে একটি ফাঁকা লাইন
               ]
 
-              # ===== Gh-Pages সেকশন (শুধু থাকলেই) =====
+              # ===== Gh-Pages সেকশন =====
               if gh_entries:
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
                   final_lines.append("# 🔴🔴🔴🔴 This Channels Update From Gh-Pages 🔴🔴🔴🔴")
-                  # এখানে কোনো ফাঁকা লাইন নেই (উদাহরণ অনুযায়ী)
                   for extinf, url in gh_entries:
-                      final_lines.append(extinf)      # #EXTINF লাইন
-                      final_lines.append(url)         # URL (পরের লাইনে)
+                      final_lines.append(extinf)
+                      final_lines.append(url)
                       final_lines.append("")          # URL-এর পর ফাঁকা লাইন
                   final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Channel End Here 🔴🔴🔴🔴")
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                  # শেষের লাল লাইনের পর কোনো ফাঁকা লাইন নেই (উদাহরণে নেই)
+                  # ৩ লাইন গ্যাপ (ফাঁকা লাইন)
+                  final_lines.append("")
+                  final_lines.append("")
+                  final_lines.append("")
 
-              # ===== নতুন চ্যানেল সেকশন (শুধু থাকলেই) =====
+              # ===== নতুন চ্যানেল সেকশন =====
               if new_entries:
-                  # আগের সেকশনের শেষ লাল লাইনের পর কোনো ফাঁকা লাইন নেই, তাই সরাসরি নতুন হেডার
-                  final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                  final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Not Found Thats Channels, Now New Channel Added from 2nd Sourch 🔴🔴🔴🔴")
-                  # এখানেও কোনো ফাঁকা লাইন নেই
+                  # ২ লাইন গ্যাপ (ফাঁকা লাইন)
+                  final_lines.append("")
+                  final_lines.append("")
+                  final_lines.append("#🟡🟡🟡🟡 Gh-Pages Not Found Thats Channels, Now New Channel Added from 2nd Sourch 🟡🟡🟡🟡")
                   for extinf, url in new_entries:
                       final_lines.append(extinf)
                       final_lines.append(url)
@@ -225,7 +268,7 @@ jobs:
                   print(f"❌ {country} সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
                   continue
 
-              # UPDATED_SOURCES কে পরিষ্কার করি
+              # UPDATED_SOURCES কে পরিষ্কার করি (এতে নাম পরিষ্কারও অন্তর্ভুক্ত)
               upd_content = clean_updated_m3u(upd_content)
 
               src_entries = parse_m3u(src_content)
