@@ -160,7 +160,13 @@ jobs:
                   line = lines[i].strip()
                   if line.startswith('#EXTINF'):
                       extinf = line
-                      url = lines[i+1].strip() if i+1 < len(lines) else ''
+                      # পরবর্তী লাইনটি URL (যদি থাকে)
+                      url = ''
+                      if i+1 < len(lines):
+                          next_line = lines[i+1].strip()
+                          # যদি পরের লাইনটি #EXTINF না হয় এবং খালি না হয়, তাহলে সেটিই URL
+                          if not next_line.startswith('#EXTINF') and next_line:
+                              url = next_line
                       entries.append((extinf, url))
                       i += 2
                   else:
@@ -174,7 +180,7 @@ jobs:
 
           def build_playlist(country, source_entries, update_entries, first_run_flag):
               """
-              source_entries: gh-pages থেকে পাওয়া এন্ট্রি
+              source_entries: gh-pages থেকে পাওয়া এন্ট্রি (extinf, url)
               update_entries: ২য় সোর্স থেকে পাওয়া এন্ট্রি (ইতিমধ্যে পরিষ্কার করা)
               """
               update_url_map = {}
@@ -217,9 +223,14 @@ jobs:
                       if cleaned_name not in source_names:
                           new_entries.append((clean_channel_name(extinf), url))
 
-              # ===== টাইমস্ট্যাম্প ও মোট =====
+              # ===== শুধুমাত্র URL আছে এমন এন্ট্রি গণনা =====
+              def count_valid(entries):
+                  return sum(1 for _, url in entries if url and url.strip())
+
+              total = count_valid(gh_entries) + count_valid(new_entries)
+
+              # ===== টাইমস্ট্যাম্প =====
               now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")
-              total = len(gh_entries) + len(new_entries)
 
               # ===== প্লেলিস্ট হেডার =====
               final_lines = [
@@ -241,7 +252,7 @@ jobs:
                   final_lines.append("")
                   for extinf, url in gh_entries:
                       final_lines.append(extinf)
-                      final_lines.append(url)
+                      final_lines.append(url if url else "")
                       final_lines.append("")
                   final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Channel End Here 🔴🔴🔴🔴")
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
@@ -256,7 +267,7 @@ jobs:
                   final_lines.append("#🟡🟡🟡🟡 Gh-Pages Not Found Thats Channels, Now New Channel Added from 2nd Sourch 🟡🟡🟡🟡")
                   for extinf, url in new_entries:
                       final_lines.append(extinf)
-                      final_lines.append(url)
+                      final_lines.append(url if url else "")
                       final_lines.append("")
 
               event_name = os.getenv("GITHUB_EVENT_NAME")
