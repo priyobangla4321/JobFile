@@ -57,32 +57,63 @@ jobs:
           }
           # ====================================================
 
-          # ---------- নাম পরিষ্কারের ফাংশন ----------
+          # ---------- নাম পরিষ্কারের উন্নত ফাংশন ----------
           def clean_channel_name(extinf_line):
               """
-              #EXTINF লাইন থেকে চ্যানেলের নামের ভিতর থেকে নির্দিষ্ট টেক্সট (যেমন (720p), [Geo-Blocked] ইত্যাদি) বাদ দেয়।
-              ইউজার ইচ্ছামতো নিচের bad_patterns লিস্টে আরও শব্দ যোগ করতে পারেন।
+              #EXTINF লাইন থেকে চ্যানেলের নামের শেষের () এবং [] ব্লক পরিষ্কার করে:
+              - () ব্র্যাকেটের ভেতর শুধু পিক্সেল (যেমন (720p)) থাকলে বাদ দেয়।
+              - [] ব্র্যাকেটের ভেতর Geo‑সংক্রান্ত শব্দ (Geo‑Blocked, Geo Blocked, ইত্যাদি) থাকলে বাদ দেয়।
+              - কিন্তু () বা [] এর ভেতর HD, hd, Low, low, M, m ইত্যাদি থাকলে সেগুলো রাখে।
               """
               if ',' not in extinf_line:
                   return extinf_line
               prefix, name = extinf_line.split(',', 1)
               
-              # যেসব প্যাটার্ন বাদ দিতে হবে (এখানে ইউজার নিজের মতো যোগ/বাদ দিতে পারেন)
-              bad_patterns = [
-                  r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*',          # [Geo-Blocked], [Geo Blocked], [GeoBlocked]
-                  r'\s*\[\s*Not 24/7\s*\]\s*',                       # [Not 24/7]
-                  r'\s*\(\d+p\)\s*',                                 # (480p), (720p) ইত্যাদি
-                  r'\s*\(\d+p\)\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*', # (720p) [Geo-Blocked]
-                  r'\s*\(\d+p\)\s*\[\s*Not 24/7\s*\]\s*',            # (720p) [Not 24/7]
+              # সংরক্ষণযোগ্য () ও [] প্যাটার্ন (কেস ইনসেনসিটিভ)
+              keep_patterns = [
+                  r'\(\s*HD\s*\)', r'\[\s*HD\s*\]',
+                  r'\(\s*hd\s*\)', r'\[\s*hd\s*\]',
+                  r'\(\s*low\s*\)', r'\[\s*low\s*\]',
+                  r'\(\s*Low\s*\)', r'\[\s*Low\s*\]',
+                  r'\(\s*M\s*\)', r'\[\s*M\s*\]',
+                  r'\(\s*m\s*\)', r'\[\s*m\s*\]',
               ]
+              keep_re = re.compile('|'.join(keep_patterns), re.IGNORECASE)
               
-              cleaned = name
-              for pat in bad_patterns:
-                  cleaned = re.sub(pat, '', cleaned)
+              # 1. প্রথমে সব () ব্লক খুঁজে বের করি
+              #    regex: \( ( [^)]* ) \)
+              #    যদি ভেতরের কন্টেন্ট শুধু সংখ্যা+p হয় (যেমন 720p) তবে পুরো ব্লক বাদ; অন্যথায় যদি keep_patterns এর সাথে মেলে তবে রাখি, নাহলে বাদ দেই (অজানা ট্যাগ বাদ)
+              def process_parentheses(match):
+                  inner = match.group(1).strip()
+                  # যদি ভেতরে শুধু সংখ্যা+p হয়
+                  if re.fullmatch(r'\d+p', inner, re.IGNORECASE):
+                      return ''  # পুরো ব্লক বাদ
+                  # যদি keep_patterns এর সাথে মেলে
+                  if keep_re.search(match.group(0)):
+                      return match.group(0)  # ব্লক রেখে দিই
+                  else:
+                      return ''  # অজানা () ব্লক বাদ
               
-              # অতিরিক্ত স্পেস কমিয়ে ফেলা
-              cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-              return f"{prefix},{cleaned}"
+              name = re.sub(r'\(([^)]*)\)', process_parentheses, name)
+              
+              # 2. [] ব্লক পরিষ্কার
+              #    [] এর ভেতরে Geo সংক্রান্ত শব্দ থাকলে পুরো ব্লক বাদ, নাহলে keep_patterns চেক
+              def process_brackets(match):
+                  inner = match.group(1).strip()
+                  # Geo সংক্রান্ত শব্দ চেক (geo, blocked ইত্যাদি)
+                  if re.search(r'geo\s*-?\s*blocked?', inner, re.IGNORECASE):
+                      return ''  # পুরো ব্লক বাদ
+                  # যদি keep_patterns এর সাথে মেলে
+                  if keep_re.search(match.group(0)):
+                      return match.group(0)
+                  else:
+                      return ''  # অজানা [] ব্লক বাদ
+              
+              name = re.sub(r'\[([^\]]*)\]', process_brackets, name)
+              
+              # অতিরিক্ত স্পেস পরিষ্কার
+              name = re.sub(r'\s+', ' ', name).strip()
+              return f"{prefix},{name}"
           # -----------------------------------------
 
           def download_playlist(url):
@@ -166,31 +197,37 @@ jobs:
               # ===== ১. Gh-Pages সেকশন (সব চ্যানেলই এখানে) =====
               gh_entries = []
               for extinf, old_url in source_entries:
-                  name = extract_channel_name(extinf)
-                  # নাম পরিষ্কার করে ম্যাচ করানো
-                  cleaned_name = name
+                  # পুরনো এন্ট্রির নামও পরিষ্কার করি
+                  cleaned_extinf = clean_channel_name(extinf)
+                  name = extract_channel_name(cleaned_extinf)
+                  # নামের সাথে ম্যাচ খোঁজা (উভয় পাশে পরিষ্কার করে)
+                  matched_url = None
                   if name:
-                      # পরিষ্কার করা নামের সাথে ম্যাপিং চেক
-                      matched_url = None
+                      cleaned_name = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', name, flags=re.IGNORECASE).strip()
                       for n, u in update_url_map.items():
                           # উভয় পাশের নাম পরিষ্কার করে তুলনা
-                          if re.sub(r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*|\s*\[\s*Not 24/7\s*\]\s*|\s*\(\d+p\)\s*', '', n).strip() == re.sub(r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*|\s*\[\s*Not 24/7\s*\]\s*|\s*\(\d+p\)\s*', '', name).strip():
+                          n_clean = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', n, flags=re.IGNORECASE).strip()
+                          if cleaned_name == n_clean:
                               matched_url = u
                               break
-                      if matched_url:
-                          gh_entries.append((clean_channel_name(extinf), matched_url))
-                      else:
-                          gh_entries.append((clean_channel_name(extinf), old_url))
+                  if matched_url:
+                      gh_entries.append((cleaned_extinf, matched_url))
                   else:
-                      gh_entries.append((clean_channel_name(extinf), old_url))
+                      gh_entries.append((cleaned_extinf, old_url))
 
               # ===== ২. নতুন চ্যানেল (যা gh-pages এ নেই) =====
-              source_names = {extract_channel_name(clean_channel_name(e[0])) for e in source_entries if extract_channel_name(e[0])}
+              source_names = set()
+              for extinf, _ in source_entries:
+                  cleaned = clean_channel_name(extinf)
+                  name = extract_channel_name(cleaned)
+                  if name:
+                      cleaned_name = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', name, flags=re.IGNORECASE).strip()
+                      source_names.add(cleaned_name)
               new_entries = []
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
                   if name:
-                      cleaned_name = re.sub(r'\s*\[\s*Geo\s*[- ]?\s*Blocked\s*\]\s*|\s*\[\s*Not 24/7\s*\]\s*|\s*\(\d+p\)\s*', '', name).strip()
+                      cleaned_name = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', name, flags=re.IGNORECASE).strip()
                       if cleaned_name not in source_names:
                           new_entries.append((clean_channel_name(extinf), url))
 
@@ -212,21 +249,25 @@ jobs:
               # ===== Gh-Pages সেকশন =====
               if gh_entries:
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                  final_lines.append("# 🔴🔴🔴🔴 This Channels Update From Gh-Pages 🔴🔴🔴🔴")
+                  final_lines.append("# 🔴🔴🔴🔴 This Channels List Update From Gh-Pages 🔴🔴🔴🔴")
+                  # ৩টি ফাঁকা লাইন
+                  final_lines.append("")
+                  final_lines.append("")
+                  final_lines.append("")
                   for extinf, url in gh_entries:
                       final_lines.append(extinf)
                       final_lines.append(url)
                       final_lines.append("")          # URL-এর পর ফাঁকা লাইন
                   final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Channel End Here 🔴🔴🔴🔴")
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
-                  # ৩ লাইন গ্যাপ (ফাঁকা লাইন)
+                  # শেষের লাল লাইনের পর ৩টি ফাঁকা লাইন (আগের নিয়ম)
                   final_lines.append("")
                   final_lines.append("")
                   final_lines.append("")
 
               # ===== নতুন চ্যানেল সেকশন =====
               if new_entries:
-                  # ২ লাইন গ্যাপ (ফাঁকা লাইন)
+                  # ২টি ফাঁকা লাইন
                   final_lines.append("")
                   final_lines.append("")
                   final_lines.append("#🟡🟡🟡🟡 Gh-Pages Not Found Thats Channels, Now New Channel Added from 2nd Sourch 🟡🟡🟡🟡")
