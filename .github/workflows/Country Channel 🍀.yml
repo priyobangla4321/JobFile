@@ -67,10 +67,20 @@ jobs:
           }
           # ====================================================
 
+          # ---------- নাম পরিষ্কারের উন্নত ফাংশন ----------
           def clean_channel_name(extinf_line):
+              """
+              #EXTINF লাইন থেকে চ্যানেলের নামের শেষের () এবং [] ব্লক পরিষ্কার করে:
+              - () ব্র্যাকেটের ভেতর শুধু পিক্সেল (যেমন (720p)) থাকলে বাদ দেয়।
+              - [] ব্র্যাকেটের ভেতর Geo‑সংক্রান্ত শব্দ (Geo‑Blocked, Geo Blocked, ইত্যাদি) থাকলে বাদ দেয়।
+              - কিন্তু () বা [] এর ভেতর HD, hd, Low, low, M, m ইত্যাদি থাকলে সেগুলো রাখে।
+              - এছাড়া group-title="...", Name ফরম্যাটে কমার পরে একটি স্পেস যোগ করে।
+              """
               if ',' not in extinf_line:
                   return extinf_line
               prefix, name = extinf_line.split(',', 1)
+              
+              # সংরক্ষণযোগ্য () ও [] প্যাটার্ন (কেস ইনসেনসিটিভ)
               keep_patterns = [
                   r'\(\s*HD\s*\)', r'\[\s*HD\s*\]',
                   r'\(\s*hd\s*\)', r'\[\s*hd\s*\]',
@@ -80,24 +90,37 @@ jobs:
                   r'\(\s*m\s*\)', r'\[\s*m\s*\]',
               ]
               keep_re = re.compile('|'.join(keep_patterns), re.IGNORECASE)
+              
+              # 1. প্রথমে সব () ব্লক খুঁজে বের করি
               def process_parentheses(match):
                   inner = match.group(1).strip()
                   if re.fullmatch(r'\d+p', inner, re.IGNORECASE):
                       return ''
                   if keep_re.search(match.group(0)):
                       return match.group(0)
-                  return ''
+                  else:
+                      return ''
+              
               name = re.sub(r'\(([^)]*)\)', process_parentheses, name)
+              
+              # 2. [] ব্লক পরিষ্কার
               def process_brackets(match):
                   inner = match.group(1).strip()
                   if re.search(r'geo\s*-?\s*blocked?', inner, re.IGNORECASE):
                       return ''
                   if keep_re.search(match.group(0)):
                       return match.group(0)
-                  return ''
+                  else:
+                      return ''
+              
               name = re.sub(r'\[([^\]]*)\]', process_brackets, name)
+              
+              # অতিরিক্ত স্পেস পরিষ্কার
               name = re.sub(r'\s+', ' ', name).strip()
+              
+              # কমার পরে একটি স্পেস যোগ করে ফিরিয়ে দেওয়া
               return f"{prefix}, {name}"
+          # -----------------------------------------
 
           def download_playlist(url):
               try:
@@ -109,6 +132,12 @@ jobs:
                   return None
 
           def clean_updated_m3u(content):
+              """
+              UPDATED_SOURCES থেকে আসা m3u কন্টেন্ট পরিষ্কার করে:
+              - #EXTVLCOPT লাইন বাদ দেয়
+              - #EXTINF লাইন থেকে http-user-agent="..." অ্যাট্রিবিউট সরিয়ে দেয়
+              - চ্যানেলের নাম থেকে অবাঞ্ছিত টেক্সট বাদ দেয় (clean_channel_name)
+              """
               lines = content.splitlines()
               new_lines = []
               i = 0
@@ -158,12 +187,17 @@ jobs:
               return extinf_line.split(',')[-1].strip()
 
           def build_playlist(country, source_entries, update_entries, first_run_flag):
+              """
+              source_entries: gh-pages থেকে পাওয়া এন্ট্রি (extinf, url)
+              update_entries: ২য় সোর্স থেকে পাওয়া এন্ট্রি (ইতিমধ্যে পরিষ্কার করা) - একাধিক URL মার্জ করে আনা
+              """
               update_url_map = {}
               for extinf, url in update_entries:
                   name = extract_channel_name(extinf)
                   if name and url:
                       update_url_map[name] = url
 
+              # ===== ১. Gh-Pages সেকশন =====
               gh_entries = []
               for extinf, old_url in source_entries:
                   cleaned_extinf = clean_channel_name(extinf)
@@ -181,6 +215,7 @@ jobs:
                   else:
                       gh_entries.append((cleaned_extinf, old_url))
 
+              # ===== ২. নতুন চ্যানেল =====
               source_names = set()
               for extinf, _ in source_entries:
                   cleaned = clean_channel_name(extinf)
@@ -196,12 +231,16 @@ jobs:
                       if cleaned_name not in source_names:
                           new_entries.append((clean_channel_name(extinf), url))
 
+              # ===== শুধুমাত্র URL আছে এমন এন্ট্রি গণনা =====
               def count_valid(entries):
                   return sum(1 for _, url in entries if url and url.strip())
 
               total = count_valid(gh_entries) + count_valid(new_entries)
+
+              # ===== টাইমস্ট্যাম্প =====
               now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")
 
+              # ===== প্লেলিস্ট হেডার =====
               final_lines = [
                   "#EXTM3U",
                   "# Sirome TV (2022-2026)",
@@ -212,6 +251,7 @@ jobs:
                   ""
               ]
 
+              # ===== Gh-Pages সেকশন =====
               if gh_entries:
                   final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
                   final_lines.append("# 🔴🔴🔴🔴 This Channels List Update From Gh-Pages 🔴🔴🔴🔴")
@@ -228,6 +268,7 @@ jobs:
                   final_lines.append("")
                   final_lines.append("")
 
+              # ===== নতুন চ্যানেল সেকশন =====
               if new_entries:
                   final_lines.append("")
                   final_lines.append("")
@@ -253,37 +294,45 @@ jobs:
 
           for country in SOURCES:
               print(f"\n🔹 প্রসেসিং {country}...")
+
               src_url = SOURCES[country]
-              upd_urls = UPDATED_SOURCES.get(country)
-              if not upd_urls:
+              # UPDATED_SOURCES থেকে মান নাও (স্ট্রিং অথবা লিস্ট)
+              upd_raw = UPDATED_SOURCES.get(country)
+              if not upd_raw:
                   print(f"⚠️ {country} এর জন্য ২য় সোর্স নেই, স্কিপ।")
                   continue
-              if isinstance(upd_urls, str):
-                  upd_urls = [upd_urls]
 
+              # যদি স্ট্রিং হয়, তাহলে লিস্টে কনভার্ট করো
+              if isinstance(upd_raw, str):
+                  upd_urls = [upd_raw]
+              else:
+                  upd_urls = upd_raw  # ইতিমধ্যে লিস্ট
+
+              # gh-pages কন্টেন্ট ডাউনলোড
               src_content = download_playlist(src_url)
               if src_content is None:
-                  print(f"❌ {country} এর gh-pages সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
-                  continue
-
-              all_update_entries = []
-              any_success = False
-              for idx, upd_url in enumerate(upd_urls):
-                  print(f"   📥 ডাউনলোড হচ্ছে আপডেট সোর্স {idx+1}: {upd_url}")
-                  upd_content = download_playlist(upd_url)
-                  if upd_content is None:
-                      print(f"   ⚠️ সোর্স {idx+1} ব্যর্থ, বাদ দেওয়া হচ্ছে।")
-                      continue
-                  upd_content = clean_updated_m3u(upd_content)
-                  entries = parse_m3u(upd_content)
-                  all_update_entries.extend(entries)
-                  any_success = True
-
-              if not any_success:
-                  print(f"❌ {country} এর সব আপডেট সোর্স ব্যর্থ, পুরো দেশ স্কিপ।")
+                  print(f"❌ {country} gh-pages সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
                   continue
 
               src_entries = parse_m3u(src_content)
+
+              # সব UPDATED_SOURCES URL থেকে এন্ট্রি জমা করো
+              all_update_entries = []
+              for upd_url in upd_urls:
+                  print(f"    ↳ ডাউনলোড: {upd_url}")
+                  upd_content = download_playlist(upd_url)
+                  if upd_content is None:
+                      print(f"    ⚠️ {upd_url} ব্যর্থ, এড়িয়ে যাচ্ছি।")
+                      continue
+                  cleaned = clean_updated_m3u(upd_content)
+                  entries = parse_m3u(cleaned)
+                  all_update_entries.extend(entries)
+                  print(f"    ✓ {len(entries)} টি এন্ট্রি পাওয়া গেছে।")
+
+              if not all_update_entries:
+                  print(f"⚠️ {country} এর জন্য কোনো বৈধ আপডেট সোর্স পাওয়া যায়নি, স্কিপ।")
+                  continue
+
               file_exists = Path(f"{country}.m3u").exists()
               new_content, total, suffix = build_playlist(
                   country, src_entries, all_update_entries, first_run_flag=not file_exists
