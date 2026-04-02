@@ -57,8 +57,21 @@ jobs:
               "Afghanistan": "https://iptv-org.github.io/iptv/countries/af.m3u",
               "Sports1": "https://iptv-org.github.io/iptv/categories/sports.m3u",
               "China": "https://github.com/bugsfreeweb/LiveTVCollector/blob/main/LiveTV/China/LiveTV.m3u",
-              "BDIX": "http://103 .229.254.25:7001/playlist.m3u8",
-              "BDIX": "http://103.161.153.165:8000/playlist.m3u8"
+              "BDIX": "http://103.229.254.25:7001/playlist.m3u8"
+          }
+
+          # ========== নতুন অংশ (মেইন প্লেলিস্ট) ==========
+          MAIN_PLAYLISTS = {
+              "BDIX": {
+                  "source": "https://raw.githubusercontent.com/sirometv/playlist/gh-pages/BDIX.m3u",
+                  "update_urls": [
+                      "http://103.229.254.25:7001/playlist.m3u8",
+                      "http://103.161.153.165:8000/playlist.m3u8",
+                      "https://raw.githubusercontent.com/belal22/LiveTV/main/LiveTV.m3u"
+                  ],
+                  "output": "main/BDIX.m3u"
+              }
+              # ভবিষ্যতে আরও মেইন প্লেলিস্ট যোগ করতে পারেন এখানে
           }
           # ====================================================
 
@@ -285,7 +298,104 @@ jobs:
 
               return "\n".join(final_lines).rstrip() + "\n", total, suffix
 
-          # ==================== মূল প্রোগ্রাম ====================
+          # ========== মেইন প্লেলিস্টের জন্য আলাদা ফাংশন ==========
+          def build_main_playlist(playlist_name, source_entries, all_update_entries, first_run_flag):
+              """
+              মেইন প্লেলিস্টের জন্য মার্জিং লজিক (একাধিক আপডেট সোর্স থেকে)
+              all_update_entries: একাধিক আপডেট সোর্স থেকে পাওয়া সব এন্ট্রির তালিকা
+              """
+              update_url_map = {}
+              for extinf, url in all_update_entries:
+                  name = extract_channel_name(extinf)
+                  if name and url:
+                      update_url_map[name] = url
+
+              # একই লজিক: source_entries থেকে gh-entries তৈরি এবং নতুন এন্ট্রি যুক্ত
+              gh_entries = []
+              for extinf, old_url in source_entries:
+                  cleaned_extinf = clean_channel_name(extinf)
+                  name = extract_channel_name(cleaned_extinf)
+                  matched_url = None
+                  if name:
+                      cleaned_name = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', name, flags=re.IGNORECASE).strip()
+                      for n, u in update_url_map.items():
+                          n_clean = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', n, flags=re.IGNORECASE).strip()
+                          if cleaned_name == n_clean:
+                              matched_url = u
+                              break
+                  if matched_url:
+                      gh_entries.append((cleaned_extinf, matched_url))
+                  else:
+                      gh_entries.append((cleaned_extinf, old_url))
+
+              source_names = set()
+              for extinf, _ in source_entries:
+                  cleaned = clean_channel_name(extinf)
+                  name = extract_channel_name(cleaned)
+                  if name:
+                      cleaned_name = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', name, flags=re.IGNORECASE).strip()
+                      source_names.add(cleaned_name)
+              new_entries = []
+              for extinf, url in all_update_entries:
+                  name = extract_channel_name(extinf)
+                  if name:
+                      cleaned_name = re.sub(r'\s*\(\d+p\)\s*|\s*\[\s*geo\s*[- ]?\s*blocked?\s*\]\s*', '', name, flags=re.IGNORECASE).strip()
+                      if cleaned_name not in source_names:
+                          new_entries.append((clean_channel_name(extinf), url))
+
+              def count_valid(entries):
+                  return sum(1 for _, url in entries if url and url.strip())
+
+              total = count_valid(gh_entries) + count_valid(new_entries)
+
+              now = datetime.now().strftime("%I:%M:%S%p - %d-%m-%Y")
+
+              final_lines = [
+                  "#EXTM3U",
+                  "# Sirome TV (2022-2026)",
+                  f"# Update Time: {now}",
+                  f"# Total Channel Found: {total} Channel",
+                  "# 🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।",
+                  "# All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.",
+                  ""
+              ]
+
+              if gh_entries:
+                  final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                  final_lines.append(f"# 🔴🔴🔴🔴 This Channels List Update From Gh-Pages (Main: {playlist_name}) 🔴🔴🔴🔴")
+                  final_lines.append("")
+                  final_lines.append("")
+                  final_lines.append("")
+                  for extinf, url in gh_entries:
+                      final_lines.append(extinf)
+                      final_lines.append(url if url else "")
+                      final_lines.append("")
+                  final_lines.append("# 🔴🔴🔴🔴 Gh-Pages Channel End Here 🔴🔴🔴🔴")
+                  final_lines.append("#🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴🔴")
+                  final_lines.append("")
+                  final_lines.append("")
+                  final_lines.append("")
+
+              if new_entries:
+                  final_lines.append("")
+                  final_lines.append("")
+                  final_lines.append("#🟡🟡🟡🟡 Gh-Pages Not Found Thats Channels, Now New Channel Added from Multiple Update Sources 🟡🟡🟡🟡")
+                  for extinf, url in new_entries:
+                      final_lines.append(extinf)
+                      final_lines.append(url if url else "")
+                      final_lines.append("")
+
+              event_name = os.getenv("GITHUB_EVENT_NAME")
+              if first_run_flag:
+                  suffix = "🆕 Start (Main) 🆕"
+              elif event_name == "workflow_dispatch":
+                  suffix = "🆕 Start Done ✅ (Main)"
+              else:
+                  suffix = "🔄 Schedule Done ✅ (Main)"
+
+              return "\n".join(final_lines).rstrip() + "\n", total, suffix
+
+          # ==================== মূল প্রোগ্রাম (কান্ট্রি প্লেলিস্ট) ====================
           os.system('git config user.name "github-actions[bot]"')
           os.system('git config user.email "github-actions[bot]@users.noreply.github.com"')
 
@@ -327,6 +437,60 @@ jobs:
                   print(f"✅ {country} কমিট করা হয়েছে: {commit_msg}")
               else:
                   print(f"ℹ️ {country} তে কোনো পরিবর্তন নেই, কমিট বাদ।")
+
+          # ========== নতুন অংশ: মেইন প্লেলিস্ট প্রসেসিং ==========
+          print("\n🔹 মেইন প্লেলিস্ট প্রসেসিং শুরু...")
+          for pl_name, pl_config in MAIN_PLAYLISTS.items():
+              print(f"\n🔸 প্রসেসিং মেইন প্লেলিস্ট: {pl_name}")
+              src_url = pl_config["source"]
+              update_urls = pl_config["update_urls"]
+              output_path = pl_config["output"]
+
+              # সোর্স ডাউনলোড
+              src_content = download_playlist(src_url)
+              if src_content is None:
+                  print(f"❌ {pl_name} এর সোর্স ডাউনলোড ব্যর্থ, স্কিপ।")
+                  continue
+
+              src_entries = parse_m3u(src_content)
+
+              # সব আপডেট সোর্স থেকে এন্ট্রি সংগ্রহ
+              all_update_entries = []
+              for idx, upd_url in enumerate(update_urls):
+                  print(f"   আপডেট সোর্স {idx+1}: {upd_url}")
+                  upd_content = download_playlist(upd_url)
+                  if upd_content is None:
+                      print(f"   ⚠️ ডাউনলোড ব্যর্থ, স্কিপিং এই সোর্স।")
+                      continue
+                  upd_content = clean_updated_m3u(upd_content)
+                  entries = parse_m3u(upd_content)
+                  all_update_entries.extend(entries)
+
+              if not all_update_entries:
+                  print(f"⚠️ {pl_name} এর জন্য কোনো বৈধ আপডেট সোর্স পাওয়া যায়নি।")
+                  continue
+
+              # আউটপুট ডিরেক্টরি তৈরি (যদি না থাকে)
+              output_dir = os.path.dirname(output_path)
+              if output_dir and not os.path.exists(output_dir):
+                  os.makedirs(output_dir)
+
+              file_exists = Path(output_path).exists()
+              new_content, total, suffix = build_main_playlist(
+                  pl_name, src_entries, all_update_entries, first_run_flag=not file_exists
+              )
+
+              with open(output_path, "w", encoding="utf-8") as f:
+                  f.write(new_content)
+
+              commit_msg = f"🆗 {pl_name} (Main) : {suffix}"
+              os.system(f'git add {output_path}')
+              status = os.popen('git status --porcelain').read()
+              if output_path in status:
+                  os.system(f'git commit -m "{commit_msg}"')
+                  print(f"✅ {pl_name} মেইন প্লেলিস্ট কমিট করা হয়েছে: {commit_msg}")
+              else:
+                  print(f"ℹ️ {pl_name} মেইন প্লেলিস্টে কোনো পরিবর্তন নেই, কমিট বাদ।")
 
           os.system('git push origin main')
           print("🎉 সব পরিবর্তন পুশ করা হয়েছে।")
