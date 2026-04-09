@@ -2,7 +2,7 @@ name: Fancode JSON Data ✔️
 
 on:
   schedule:
-    - cron: '*/20 * * * *'  # 0,20,40 মিনিটে
+    - cron: '*/15 * * * *'  # 0,20,40 মিনিটে
   workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
 
 permissions:
