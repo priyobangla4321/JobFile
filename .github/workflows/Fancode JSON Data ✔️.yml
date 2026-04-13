@@ -2,8 +2,8 @@ name: Fancode JSON Data ✔️
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # 0,20,40 মিনিটে
-  workflow_dispatch: # ম্যানুয়ালি রান করার অপশন
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -44,46 +44,45 @@ jobs:
         import json
         from datetime import datetime
         import pytz
-        import shutil
         import re
         
         print("🚀 Starting JSON update process...")
         
-        # env variable থেকে URL নেয়া
         json_url = os.environ.get('JSON_URL')
         
         if not json_url:
             print("❌ Error: JSON_URL environment variable is empty!")
-            print("Please check if FANCODE_SIROME secret is properly set")
             exit(1)
         
         print(f"📥 Source URL: {json_url}")
         
         try:
-            print("⬇️ Downloading JSON data...")
             response = requests.get(json_url, timeout=10)
             response.raise_for_status()
             original_data = response.json()
             print("✅ Successfully downloaded JSON data")
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             print(f"❌ Download failed: {e}")
             exit(1)
-        except json.JSONDecodeError as e:
-            print(f"❌ Invalid JSON format: {e}")
-            exit(1)
         
-        # URL প্রতিস্থাপনের ফাংশন
-        def replace_streaming_url(url):
+        def replace_url(url):
+            """URL প্রতিস্থাপন ফাংশন"""
             if not isinstance(url, str):
                 return url
             
-            # চেক করা যে URL টি dai-partner.fancode.com/primary/ দিয়ে শুরু হয়েছে কিনা
+            # 1. প্রথমে dai-partner.fancode.com/primary/ কে bd-mc-fblive.fancode.com/mumbai/ এ পরিবর্তন
             if "https://dai-partner.fancode.com/primary/" in url:
-                # পুরাতন প্যাটার্নটি বাদ দিয়ে নতুন প্যাটার্ন যোগ করা
-                old_pattern = "https://dai-partner.fancode.com/primary/"
-                remaining_path = url.split(old_pattern, 1)[1]  # পুরাতন অংশ বাদ দিয়ে বাকি অংশ নেয়া
-                new_url = "https://bd-mc-fblive.fancode.com/mumbai/" + remaining_path
-                print(f"🔄 URL replaced: {url[:80]}... → {new_url[:80]}...")
+                # "https://dai-partner.fancode.com/primary/" বাদ দিয়ে বাকি অংশ নেয়া
+                old_prefix = "https://dai-partner.fancode.com/primary/"
+                remaining = url.replace(old_prefix, "")
+                new_url = "https://bd-mc-fblive.fancode.com/mumbai/" + remaining
+                print(f"   🔄 dai-partner → bd-mc-fblive: {url[:60]}...")
+                return new_url
+            
+            # 2. https://in কে https://bd তে পরিবর্তন (আগের ফাংশনালিটি)
+            if "https://in-mc-fblive.fancode.com" in url:
+                new_url = url.replace("https://in-mc-fblive.fancode.com", "https://bd-mc-fblive.fancode.com")
+                print(f"   🔄 in-mc-fblive → bd-mc-fblive: {url[:60]}...")
                 return new_url
             
             return url
@@ -91,67 +90,41 @@ jobs:
         # matches ডাটা নেয়া
         matches = original_data.get("matches", [])
         
-        # প্রতিটি match-এর adfree_url পরিবর্তন করা
+        # প্রতিটি match পরিবর্তন করা
         modified_matches = []
-        replaced_count = 0
-        streaming_url_replaced_count = 0
+        adfree_replaced = 0
+        dai_replaced = 0
         
         for match in matches:
             if isinstance(match, dict):
-                # adfree_url পরিবর্তন করা (আগের ফাংশনালিটি অক্ষত রাখা)
+                # adfree_url ফিল্ড পরিবর্তন
                 if "adfree_url" in match:
-                    original_url = match.get("adfree_url", "")
-                    if original_url and "https://in" in original_url:
-                        # https://in কে https://bd তে পরিবর্তন
-                        modified_url = original_url.replace("https://in", "https://bd")
-                        match["adfree_url"] = modified_url
-                        replaced_count += 1
-                        print(f"🔄 Region URL replaced: {original_url[:50]}... → {modified_url[:50]}...")
+                    old_url = match.get("adfree_url", "")
+                    if old_url:
+                        new_url = replace_url(old_url)
+                        if new_url != old_url:
+                            match["adfree_url"] = new_url
+                            adfree_replaced += 1
                 
-                # এখন Extinf বা স্ট্রিমিং URL খুঁজে বের করা (যদি JSON এ অন্য ফিল্ডে থাকে)
-                # ধরে নিচ্ছি যে Extinf এর URL অন্য কোনো ফিল্ডে থাকতে পারে
-                # যেমন: stream_url, hls_url, m3u8_url, বা url
-                url_fields = ["stream_url", "hls_url", "m3u8_url", "url", "streaming_url"]
-                
-                for field in url_fields:
-                    if field in match and isinstance(match[field], str):
-                        original_value = match[field]
-                        new_value = replace_streaming_url(original_value)
-                        if new_value != original_value:
-                            match[field] = new_value
-                            streaming_url_replaced_count += 1
-                            print(f"🔄 Streaming URL replaced in field '{field}'")
-                
-                # যদি Extinf সরাসরি string আকারে থাকে (যেমন m3u8 content)
-                if "extinf" in match and isinstance(match["extinf"], str):
-                    # extinf string এর ভিতরে URL খোঁজা
-                    content = match["extinf"]
-                    # Regex দিয়ে https://dai-partner.fancode.com/primary/ দিয়ে শুরু হওয়া URL খোঁজা
-                    pattern = r'(https://dai-partner\.fancode\.com/primary/[^\s]+\.m3u8)'
-                    
-                    def replace_match(m):
-                        old_url = m.group(1)
-                        new_url = replace_streaming_url(old_url)
-                        return new_url
-                    
-                    new_content = re.sub(pattern, replace_match, content)
-                    if new_content != content:
-                        match["extinf"] = new_content
-                        streaming_url_replaced_count += 1
-                        print(f"🔄 URL replaced inside extinf field")
+                # dai_url ফিল্ড পরিবর্তন (এটাও গুরুত্বপূর্ণ)
+                if "dai_url" in match:
+                    old_url = match.get("dai_url", "")
+                    if old_url:
+                        new_url = replace_url(old_url)
+                        if new_url != old_url:
+                            match["dai_url"] = new_url
+                            dai_replaced += 1
             
             modified_matches.append(match)
         
-        print(f"✅ Total region URLs replaced (in→bd): {replaced_count}")
-        print(f"✅ Total streaming URLs replaced (dai-partner→bd-mc-fblive): {streaming_url_replaced_count}")
+        print(f"\n✅ Summary:")
+        print(f"   - adfree_url replaced: {adfree_replaced}")
+        print(f"   - dai_url replaced: {dai_replaced}")
         
-        # বাংলাদেশ টাইমজোন সেট করা
+        # বাংলাদেশ টাইমজোন
         bd_timezone = pytz.timezone('Asia/Dhaka')
         current_time = datetime.now(bd_timezone)
-        
-        # ফরম্যাট করা সময় (AM/PM সহ)
         formatted_time = current_time.strftime("%I:%M:%S %p %d-%m-%Y")
-        print(f"🕒 Bangladesh time: {formatted_time}")
         
         # নতুন JSON তৈরি
         updated_data = {
@@ -162,68 +135,67 @@ jobs:
             "matches": modified_matches
         }
         
-        # playlist-repo ফোল্ডারে JSON ফাইল হিসেবে সেভ করা
+        # ফাইল সেভ
         output_file = 'playlist-repo/fancode.json'
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(updated_data, f, indent=4, ensure_ascii=False)
         
-        print(f"✅ JSON updated successfully at {formatted_time}")
+        print(f"\n✅ JSON updated successfully at {formatted_time}")
         
-        # ফাইল চেক করা
-        if os.path.exists(output_file):
-            file_size = os.path.getsize(output_file)
-            print(f"📄 File created: {output_file} ({file_size} bytes)")
+        # ভেরিফিকেশন - নতুন URL সঠিকভাবে বসেছে কিনা
+        print("\n🔍 Verification - checking for old URLs:")
+        with open(output_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if "dai-partner.fancode.com/primary" in content:
+                print("   ⚠️ WARNING: Still found 'dai-partner.fancode.com/primary' in file!")
+                # দেখান কোথায় আছে
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if 'dai-partner.fancode.com/primary' in line:
+                        print(f"      Line {i+1}: {line.strip()[:100]}")
+            else:
+                print("   ✅ No 'dai-partner.fancode.com/primary' found - replacement successful!")
             
-            # প্রিভিউ
-            with open(output_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                # adfree_url আছে এমন লাইনগুলো খুঁজে দেখানো
-                print("🔍 Checking adfree_url replacements:")
-                for i, line in enumerate(lines[:50]):  # প্রথম ৫০ লাইন চেক
-                    if '"adfree_url":' in line:
-                        print(f"   Line {i+1}: {line.strip()}")
-                    # নতুন URL প্যাটার্ন চেক করা
-                    if 'bd-mc-fblive.fancode.com' in line:
-                        print(f"   🎯 New streaming URL found at line {i+1}: {line.strip()[:100]}")
-        else:
-            print("❌ Error: File not created!")
-            exit(1)
+            if "bd-mc-fblive.fancode.com/mumbai" in content:
+                print("   ✅ New URL pattern 'bd-mc-fblive.fancode.com/mumbai' found in file")
       shell: python
 
     - name: Check changes
       working-directory: ./playlist-repo
       run: |
-        echo "🔍 Checking git status in playlist-repo..."
+        echo "🔍 Checking git status..."
         git status
-        echo ""
-        echo "📊 File diff:"
-        git diff fancode.json || true
         
         echo ""
-        echo "🔍 Checking adfree_url in file:"
-        grep -n "adfree_url" fancode.json | head -10
+        echo "📊 Checking for old URL pattern:"
+        if grep -n "dai-partner.fancode.com/primary" fancode.json; then
+          echo "❌ ERROR: Old URL pattern still exists!"
+          exit 1
+        else
+          echo "✅ No old URL pattern found"
+        fi
         
         echo ""
-        echo "🔍 Checking new streaming URLs in file:"
-        grep -n "bd-mc-fblive.fancode.com" fancode.json | head -10
+        echo "📊 Checking for new URL pattern:"
+        grep -n "bd-mc-fblive.fancode.com/mumbai" fancode.json | head -5
+        
+        echo ""
+        echo "📊 Showing all adfree_url values:"
+        grep -n '"adfree_url"' fancode.json | head -10
 
-    - name: Commit and push changes to playlist repo
+    - name: Commit and push changes
       working-directory: ./playlist-repo
       run: |
-        echo "💾 Committing changes to playlist repository..."
-        
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
         
         git add fancode.json
         
-        # পরিবর্তন হয়েছে কিনা চেক করা
         if git diff --staged --quiet; then
-          echo "🟡 No changes to commit (file is identical)"
+          echo "🟡 No changes to commit"
         else
           CURRENT_TIME=$(date +'%I:%M:%S %p %d-%m-%Y')
           
-          # শিডিউলড আপডেট নাকি ম্যানুয়াল চেক করা
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             COMMIT_MSG="🆗 FANCODE 🤖 JSON 🆗 Started at $CURRENT_TIME"
           else
@@ -232,16 +204,11 @@ jobs:
           
           git commit -m "$COMMIT_MSG"
           git push origin main
-          echo "✅ Changes committed and pushed successfully to playlist repository!"
-          
-          echo ""
-          echo "🌐 Updated file available at:"
-          echo "https://github.com/sirometv/playlist/blob/main/fancode.json"
+          echo "✅ Changes committed and pushed!"
         fi
 
     - name: Clean up
       if: always()
       run: |
-        echo "🧹 Cleaning up temporary files..."
         rm -rf workflow-repo
         rm -rf playlist-repo
