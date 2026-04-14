@@ -46,6 +46,10 @@ jobs:
           echo "✅ $file downloaded - $LINES lines"
         done
         
+        # SonyLiv.m3u এর কন্টেন্ট দেখুন (ডিবাগিং এর জন্য)
+        echo "🔍 SonyLiv.m3u first 20 lines:"
+        head -20 sonyliv_source.m3u
+        
     - name: Copy from source to main playlist
       working-directory: playlist-repo
       run: |
@@ -371,13 +375,7 @@ jobs:
         
         # গ্রুপ টাইটেলের লিস্ট
         TARGET_GROUP_TITLES = [
-            "SonyLiv",
             "Live Event",
-            # "Cricket",    # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Akash Go",    # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Football",    # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Sports",      # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Movies",      # uncomment করতে পারেন যদি প্রয়োজন হয়
         ]
         
         def get_bangladesh_time():
@@ -393,11 +391,7 @@ jobs:
             original_name = channel_name_match.group(1).strip() if channel_name_match else ""
             
             if group_title == "Live Event":
-                return original_name  # আসল নাম রাখবে, 🔴Live Now🔴 না
-            elif group_title == "Sports":
-                return "Sports Live"  # Sports গ্রুপের জন্য ডিফল্ট নাম
-            elif group_title == "Akash Go":
-                return original_name  # Akash Go গ্রুপের জন্য আসল নাম রাখবে
+                return original_name  # আসল নাম রাখবে
             else:
                 return original_name  # অন্যান্য গ্রুপের জন্য আসল নাম
         
@@ -408,31 +402,37 @@ jobs:
             with open(source_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # নির্দিষ্ট গ্রুপের সব চ্যানেল খুঁজে বের করা
-            pattern = r'(#EXTINF:-1[^\n]*group-title="[^"]*{}[^"]*"[^\n]*\n)(http[^\n]+)'.format(re.escape(group_title))
+            # প্রথমে #EXTINF লাইন এবং URL আলাদা করা
+            lines = content.split('\n')
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+                if line.startswith('#EXTINF'):
+                    # পরবর্তী লাইন URL হবে
+                    if i + 1 < len(lines):
+                        url_line = lines[i + 1].strip()
+                        if url_line.startswith('http'):
+                            # group-title খোঁজা
+                            grp_match = re.search(r'group-title="([^"]*)"', line)
+                            if grp_match and grp_match.group(1) == group_title:
+                                # tvg-logo extract করা
+                                logo_match = re.search(r'tvg-logo="([^"]*)"', line)
+                                tvg_logo = logo_match.group(1) if logo_match else "https://i.postimg.cc/d1hHy4ss/11.png"
+                                
+                                # চ্যানেল নাম extract করা
+                                channel_name_match = re.search(r',([^,\n]+)$', line)
+                                channel_name = channel_name_match.group(1).strip() if channel_name_match else group_title
+                                
+                                channels.append({
+                                    'extinf_line': line,
+                                    'url_line': url_line,
+                                    'tvg_logo': tvg_logo,
+                                    'channel_name': channel_name,
+                                    'group_title': group_title
+                                })
+                i += 1
             
-            matches = re.finditer(pattern, content, re.IGNORECASE)
-            
-            for match in matches:
-                extinf_line = match.group(1).strip()
-                url_line = match.group(2).strip()
-                
-                # tvg-logo extract করা
-                logo_match = re.search(r'tvg-logo="([^"]*)"', extinf_line)
-                tvg_logo = logo_match.group(1) if logo_match else "https://i.postimg.cc/d1hHy4ss/11.png"
-                
-                # গ্রুপ অনুযায়ী চ্যানেল নাম নির্ধারণ
-                channel_name = get_channel_name_strategy(group_title, extinf_line)
-                
-                channels.append({
-                    'extinf_line': extinf_line,
-                    'url_line': url_line,
-                    'tvg_logo': tvg_logo,
-                    'channel_name': channel_name,
-                    'group_title': group_title
-                })
-            
-            print(f"✅ Found {len(channels)} channels for group '{group_title}'")
+            print(f"✅ Found {len(channels)} channels for group '{group_title}' in {source_file}")
             return channels
         
         def force_groups_at_line(main_content, all_group_channels, target_line):
@@ -440,17 +440,15 @@ jobs:
             timestamp = get_bangladesh_time()
             
             # সব গ্রুপের জন্য combined section তৈরি করা
-            new_combined_section = f"#✅Sirome TV - 🟢 Groups UPDATED - 🟢 - {timestamp}\n"
+            new_combined_section = f"# --- Live Event Group ---\n"
             
             total_channels = 0
             has_any_channels = False
             
             for group_title, channels in all_group_channels.items():
-                if channels and len(channels) > 0:  # শুধু channels থাকলে এবং empty না হলে যোগ করবে
-                    new_combined_section += f"# --- {group_title} Group ---\n"
-                    
+                if channels and len(channels) > 0:
                     for channel in channels:
-                        # নতুন EXTINF লাইন তৈরি করা - গ্রুপ অনুযায়ী চ্যানেল নাম
+                        # নতুন EXTINF লাইন তৈরি করা
                         new_extinf_line = f'#EXTINF:-1 tvg-logo="{channel["tvg_logo"]}" group-title="{group_title}", {channel["channel_name"]}\n'
                         new_combined_section += new_extinf_line
                         new_combined_section += channel["url_line"] + "\n"
@@ -459,58 +457,40 @@ jobs:
                     has_any_channels = True
                     print(f"📺 Added {len(channels)} channels for {group_title}")
             
-            # No channels found লাইন যোগ করা হবে না
             if not has_any_channels:
-                print("ℹ️ No channels found for any active group - creating empty AUTO-UPDATED section")
+                print("ℹ️ No channels found for any active group")
+                return main_content, 0
             
             # মেইন কন্টেন্টকে লাইনে ভাগ করা
             lines = main_content.split('\n')
             
-            # TARGET_LINE_NUMBER validation
-            if target_line < 1:
-                target_line = 1
-            if target_line > len(lines):
-                target_line = len(lines)
-            
-            print(f"📍 Target line: {target_line} (Total lines: {len(lines)})")
-            
-            # existing ANY AUTO-UPDATED section খুঁজে বের করা এবং সরানো (পুরানো সব versions)
-            auto_updated_start = -1
-            auto_updated_end = -1
-            
-            # existing section এর শুরু এবং শেষ খুঁজা - ANY AUTO-UPDATED section
+            # # --- Live Event Group --- লাইন খুঁজে বের করা
+            target_section_start = -1
             for i, line in enumerate(lines):
-                if '#AUTO-UPDATED' in line and 'Multiple Groups' in line:
-                    auto_updated_start = i
-                    print(f"🔍 Found existing AUTO-UPDATED section at line {i+1}")
-                    # section এর শেষ খুঁজা
-                    for j in range(i + 1, len(lines)):
-                        if not (lines[j].startswith('#EXTINF') or lines[j].startswith('http') or lines[j].startswith('# ---') or lines[j].strip() == ''):
-                            auto_updated_end = j
-                            break
-                    if auto_updated_end == -1:
-                        auto_updated_end = len(lines)
+                if '# --- Live Event Group ---' in line:
+                    target_section_start = i
                     break
             
-            if auto_updated_start != -1:
-                print(f"🗑️ Removing existing AUTO-UPDATED section (lines {auto_updated_start+1}-{auto_updated_end})")
-                # existing section সরানো
-                lines = lines[:auto_updated_start] + lines[auto_updated_end:]
+            if target_section_start != -1:
+                # সেকশনের শেষ খুঁজে বের করা
+                section_end = target_section_start
+                for i in range(target_section_start + 1, len(lines)):
+                    if lines[i].startswith('# ---') or (lines[i].startswith('#') and 'Group' in lines[i]):
+                        break
+                    section_end = i
+                
+                # পুরানো সেকশন রিমুভ করা
+                lines = lines[:target_section_start] + lines[section_end + 1:]
             
-            # নতুন section টার্গেট লাইনে যোগ করা
-            insert_position = target_line - 1  # 0-based index
-            
-            # যদি insert position existing removal এর পর পরিবর্তন হয়ে থাকে, adjust করা
-            if auto_updated_start != -1 and auto_updated_start < insert_position:
-                insert_position -= (auto_updated_end - auto_updated_start)
-            
+            # নতুন সেকশন যোগ করা (টার্গেট লাইনের পরে)
+            insert_position = target_line - 1
             if insert_position > len(lines):
                 insert_position = len(lines)
             
             new_lines = lines[:insert_position] + new_combined_section.split('\n') + lines[insert_position:]
             updated_content = '\n'.join(new_lines)
             
-            print(f"✅ Multiple Groups section positioned at line {target_line}")
+            print(f"✅ Live Event Group section positioned at/after line {target_line}")
             
             return updated_content, total_channels
         
@@ -522,39 +502,18 @@ jobs:
         import os
         is_manual_run = os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
         
-        # Filter out commented groups (lines starting with #)
-        active_groups = [group for group in TARGET_GROUP_TITLES if not group.startswith('#')]
-        
-        if not active_groups:
-            print("❌ ERROR: No active groups found! Please uncomment at least one group in TARGET_GROUP_TITLES")
-            print("Current TARGET_GROUP_TITLES:", TARGET_GROUP_TITLES)
-            exit(1)
-        
-        print(f"🎯 Active groups: {active_groups}")
-        
         # প্রতিটি active গ্রুপ টাইটেলের জন্য চ্যানেল extract করুন
         all_group_channels = {}
         total_found_channels = 0
-        has_any_channels_found = False
         
-        for group_title in active_groups:
+        for group_title in TARGET_GROUP_TITLES:
             print(f"\n🔍 Processing group: {group_title}")
             channels = extract_group_channels('fancode_source.m3u', group_title)
-            # শুধু channels থাকলে all_group_channels এ যোগ করবে
             if channels:
                 all_group_channels[group_title] = channels
                 total_found_channels += len(channels)
-                has_any_channels_found = True
-            else:
-                print(f"ℹ️ No channels found for group '{group_title}', skipping...")
         
-        # যদি কোন গ্রুপেই চ্যানেল না থাকে, তাহলে শুধু empty AUTO-UPDATED section তৈরি করবে
-        if not has_any_channels_found:
-            print("ℹ️ No channels found for any active group, creating empty AUTO-UPDATED section...")
-            # শুধু timestamp সহ AUTO-UPDATED লাইন যোগ করবে
-            all_group_channels = {}  # খালি রাখা
-        
-        # মেইন প্লেলিস্ট আপডেট করুন - সবসময় TARGET_LINE_NUMBER এ রাখবে
+        # মেইন প্লেলিস্ট আপডেট করুন
         updated_content, total_added_channels = force_groups_at_line(main_content, all_group_channels, TARGET_LINE_NUMBER)
         
         # আপডেট করা কন্টেন্ট ফাইনাল ফাইলে সেভ করুন
@@ -563,41 +522,8 @@ jobs:
         
         print(f"\n🎉 Live Fancode 🔄 Update Summary:")
         print(f"   Run type: {'Manual' if is_manual_run else 'Scheduled'}")
-        print(f"   Target line: {TARGET_LINE_NUMBER}")
-        print(f"   Total active groups: {len(active_groups)}")
         print(f"   Total channels found: {total_found_channels}")
         print(f"   Total channels added: {total_added_channels}")
-        print(f"   Configuration:")
-        print(f"     - TARGET_LINE_NUMBER = {TARGET_LINE_NUMBER}")
-        print(f"     - Active groups = {active_groups}")
-        
-        # প্রতিটি গ্রুপের জন্য আলাদা summary
-        print(f"\n📊 Group-wise Summary:")
-        for group_title in active_groups:
-            if group_title in all_group_channels:
-                channels = all_group_channels[group_title]
-                channel_count = len(channels)
-                status = "✅" if channel_count > 0 else "❌"
-                
-                if channel_count > 0:
-                    first_channel_name = channels[0]['channel_name']
-                    naming_strategy = ""
-                    if group_title == "Live Event":
-                        naming_strategy = "(original names preserved - no 🔴Live Now🔴)"
-                    elif group_title == "Sports":
-                        naming_strategy = "(all named 'Sports Live')"
-                    elif group_title == "Akash Go":
-                        naming_strategy = "(original names preserved)"
-                    else:
-                        naming_strategy = "(original names)"
-                    
-                    print(f"   {status} {group_title}: {channel_count} channels {naming_strategy}")
-                    if group_title == "Akash Go" and channel_count > 0:
-                        print(f"      Sample: {first_channel_name}")
-                else:
-                    print(f"   {status} {group_title}: {channel_count} channels")
-            else:
-                print(f"   ❌ {group_title}: 0 channels (not found in source)")
         
         EOF
         
@@ -614,16 +540,12 @@ jobs:
         import pytz
         
         # ⚙️ CONFIGURATION
-        TARGET_LINE_NUMBER = 40  # আপনার ইচ্ছামত লাইন নম্বর পরিবর্তন করুন
+        TARGET_LINE_NUMBER = 40  # SonyLiv কন্টেন্ট যেখানে বসবে
         
-        # গ্রুপ টাইটেলের লিস্ট
+        # SonyLiv এর জন্য গ্রুপ টাইটেল
         TARGET_GROUP_TITLES = [
+            "SonyLiv",
             "Live Event",
-            # "Cricket",    # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Akash Go",    # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Football",    # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Sports",      # uncomment করতে পারেন যদি প্রয়োজন হয়
-            # "Movies",      # uncomment করতে পারেন যদি প্রয়োজন হয়
         ]
         
         def get_bangladesh_time():
@@ -632,135 +554,101 @@ jobs:
             now = datetime.now(bangladesh_tz)
             return now.strftime("%Y-%m-%d %I:%M:%S%p BD Time")
         
-        def get_channel_name_strategy(group_title, extinf_line):
-            """গ্রুপ অনুযায়ী চ্যানেল নামের strategy নির্ধারণ করে"""
-            # চ্যানেল নাম extract করা
-            channel_name_match = re.search(r',([^,\n]+)$', extinf_line)
-            original_name = channel_name_match.group(1).strip() if channel_name_match else ""
-            
-            if group_title == "Live Event":
-                return original_name  # আসল নাম রাখবে, 🔴Live Now🔴 না
-            elif group_title == "Sports":
-                return "Sports Live"  # Sports গ্রুপের জন্য ডিফল্ট নাম
-            elif group_title == "Akash Go":
-                return original_name  # Akash Go গ্রুপের জন্য আসল নাম রাখবে
-            else:
-                return original_name  # অন্যান্য গ্রুপের জন্য আসল নাম
-        
-        def extract_group_channels(source_file, group_title):
-            """সোর্স প্লেলিস্ট থেকে নির্দিষ্ট গ্রুপের সব চ্যানেল extract করে"""
+        def extract_all_channels_from_sonyliv(source_file):
+            """SonyLiv প্লেলিস্ট থেকে সব চ্যানেল extract করে"""
             channels = []
             
             with open(source_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # নির্দিষ্ট গ্রুপের সব চ্যানেল খুঁজে বের করা
-            pattern = r'(#EXTINF:-1[^\n]*group-title="[^"]*{}[^"]*"[^\n]*\n)(http[^\n]+)'.format(re.escape(group_title))
+            print(f"📄 Reading {source_file}")
             
-            matches = re.finditer(pattern, content, re.IGNORECASE)
+            # লাইন বাই লাইন পার্স করা
+            lines = content.split('\n')
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+                if line.startswith('#EXTINF'):
+                    # পরবর্তী লাইন URL হবে
+                    if i + 1 < len(lines):
+                        url_line = lines[i + 1].strip()
+                        if url_line.startswith('http'):
+                            # group-title extract করা
+                            grp_match = re.search(r'group-title="([^"]*)"', line)
+                            group_title = grp_match.group(1) if grp_match else "SonyLiv"
+                            
+                            # শুধু মাত্র TARGET_GROUP_TITLES এর group_title থাকলে নিব
+                            if group_title in TARGET_GROUP_TITLES:
+                                # tvg-logo extract করা
+                                logo_match = re.search(r'tvg-logo="([^"]*)"', line)
+                                tvg_logo = logo_match.group(1) if logo_match else "https://i.postimg.cc/d1hHy4ss/11.png"
+                                
+                                # চ্যানেল নাম extract করা
+                                channel_name_match = re.search(r',([^,\n]+)$', line)
+                                channel_name = channel_name_match.group(1).strip() if channel_name_match else group_title
+                                
+                                channels.append({
+                                    'extinf_line': line,
+                                    'url_line': url_line,
+                                    'tvg_logo': tvg_logo,
+                                    'channel_name': channel_name,
+                                    'group_title': group_title
+                                })
+                                print(f"   Found: {channel_name} ({group_title})")
+                i += 1
             
-            for match in matches:
-                extinf_line = match.group(1).strip()
-                url_line = match.group(2).strip()
-                
-                # tvg-logo extract করা
-                logo_match = re.search(r'tvg-logo="([^"]*)"', extinf_line)
-                tvg_logo = logo_match.group(1) if logo_match else "https://i.postimg.cc/d1hHy4ss/11.png"
-                
-                # গ্রুপ অনুযায়ী চ্যানেল নাম নির্ধারণ
-                channel_name = get_channel_name_strategy(group_title, extinf_line)
-                
-                channels.append({
-                    'extinf_line': extinf_line,
-                    'url_line': url_line,
-                    'tvg_logo': tvg_logo,
-                    'channel_name': channel_name,
-                    'group_title': group_title
-                })
-            
-            print(f"✅ Found {len(channels)} channels for group '{group_title}'")
+            print(f"✅ Found {len(channels)} total channels from SonyLiv.m3u")
             return channels
         
-        def force_groups_at_line(main_content, all_group_channels, target_line):
-            """সবসময় নির্দিষ্ট লাইনে সব গ্রুপের সেকশন রাখে"""
-            timestamp = get_bangladesh_time()
+        def insert_sonyliv_content(main_content, channels, target_line):
+            """SonyLiv কন্টেন্ট নির্দিষ্ট লাইনে বসায়"""
             
-            # সব গ্রুপের জন্য combined section তৈরি করা
-            new_combined_section = f"#✅Sirome TV - 🟢 SonyLiv Groups UPDATED - 🟢 - {timestamp}\n"
+            if not channels:
+                print("⚠️ No channels to add from SonyLiv")
+                return main_content
             
-            total_channels = 0
-            has_any_channels = False
+            # SonyLiv সেকশন তৈরি করা
+            sonyliv_section = f"\n# --- SonyLiv Group ---\n"
             
-            for group_title, channels in all_group_channels.items():
-                if channels and len(channels) > 0:  # শুধু channels থাকলে এবং empty না হলে যোগ করবে
-                    new_combined_section += f"# --- {group_title} Group ---\n"
-                    
-                    for channel in channels:
-                        # নতুন EXTINF লাইন তৈরি করা - গ্রুপ অনুযায়ী চ্যানেল নাম
-                        new_extinf_line = f'#EXTINF:-1 tvg-logo="{channel["tvg_logo"]}" group-title="{group_title}", {channel["channel_name"]}\n'
-                        new_combined_section += new_extinf_line
-                        new_combined_section += channel["url_line"] + "\n"
-                    
-                    total_channels += len(channels)
-                    has_any_channels = True
-                    print(f"📺 Added {len(channels)} channels for {group_title}")
-            
-            # No channels found লাইন যোগ করা হবে না
-            if not has_any_channels:
-                print("ℹ️ No channels found for any active group - creating empty AUTO-UPDATED section")
+            for channel in channels:
+                # group-title SonyLiv রাখা হচ্ছে
+                new_extinf_line = f'#EXTINF:-1 tvg-logo="{channel["tvg_logo"]}" group-title="SonyLiv", {channel["channel_name"]}\n'
+                sonyliv_section += new_extinf_line
+                sonyliv_section += channel["url_line"] + "\n"
             
             # মেইন কন্টেন্টকে লাইনে ভাগ করা
             lines = main_content.split('\n')
             
-            # TARGET_LINE_NUMBER validation
-            if target_line < 1:
-                target_line = 1
-            if target_line > len(lines):
-                target_line = len(lines)
-            
-            print(f"📍 Target line: {target_line} (Total lines: {len(lines)})")
-            
-            # existing ANY AUTO-UPDATED section খুঁজে বের করা এবং সরানো (পুরানো সব versions)
-            auto_updated_start = -1
-            auto_updated_end = -1
-            
-            # existing section এর শুরু এবং শেষ খুঁজা - SonyLiv AUTO-UPDATED section
+            # # --- SonyLiv Group --- লাইন খুঁজে বের করা (যদি থাকে)
+            sonyliv_start = -1
             for i, line in enumerate(lines):
-                if '#AUTO-UPDATED' in line and 'SonyLiv Groups' in line:
-                    auto_updated_start = i
-                    print(f"🔍 Found existing SonyLiv AUTO-UPDATED section at line {i+1}")
-                    # section এর শেষ খুঁজা
-                    for j in range(i + 1, len(lines)):
-                        if not (lines[j].startswith('#EXTINF') or lines[j].startswith('http') or lines[j].startswith('# ---') or lines[j].strip() == ''):
-                            auto_updated_end = j
-                            break
-                    if auto_updated_end == -1:
-                        auto_updated_end = len(lines)
+                if '# --- SonyLiv Group ---' in line:
+                    sonyliv_start = i
                     break
             
-            if auto_updated_start != -1:
-                print(f"🗑️ Removing existing SonyLiv AUTO-UPDATED section (lines {auto_updated_start+1}-{auto_updated_end})")
-                # existing section সরানো
-                lines = lines[:auto_updated_start] + lines[auto_updated_end:]
+            if sonyliv_start != -1:
+                # পুরানো SonyLiv সেকশন রিমুভ করা
+                section_end = sonyliv_start
+                for i in range(sonyliv_start + 1, len(lines)):
+                    if lines[i].startswith('# ---') and 'Group' in lines[i]:
+                        break
+                    section_end = i
+                lines = lines[:sonyliv_start] + lines[section_end + 1:]
+                print(f"🗑️ Removed existing SonyLiv section")
             
-            # নতুন section টার্গেট লাইনে যোগ করা
-            insert_position = target_line - 1  # 0-based index
-            
-            # যদি insert position existing removal এর পর পরিবর্তন হয়ে থাকে, adjust করা
-            if auto_updated_start != -1 and auto_updated_start < insert_position:
-                insert_position -= (auto_updated_end - auto_updated_start)
-            
+            # নতুন সেকশন টার্গেট লাইনে যোগ করা
+            insert_position = target_line - 1
             if insert_position > len(lines):
                 insert_position = len(lines)
             
-            new_lines = lines[:insert_position] + new_combined_section.split('\n') + lines[insert_position:]
+            new_lines = lines[:insert_position] + sonyliv_section.split('\n') + lines[insert_position:]
             updated_content = '\n'.join(new_lines)
             
-            print(f"✅ SonyLiv Multiple Groups section positioned at line {target_line}")
+            print(f"✅ SonyLiv section added with {len(channels)} channels at line {target_line}")
             
-            return updated_content, total_channels
+            return updated_content
         
-        # All Channel update এর পরের temporary ফাইল লোড করুন
+        # Fancode update এর পরের ফাইল লোড করুন
         with open('sirometv_updated.m3u', 'r', encoding='utf-8') as f:
             main_content = f.read()
         
@@ -768,40 +656,12 @@ jobs:
         import os
         is_manual_run = os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
         
-        # Filter out commented groups (lines starting with #)
-        active_groups = [group for group in TARGET_GROUP_TITLES if not group.startswith('#')]
+        # SonyLiv থেকে সব চ্যানেল extract করুন
+        print("🔍 Extracting channels from SonyLiv.m3u...")
+        channels = extract_all_channels_from_sonyliv('sonyliv_source.m3u')
         
-        if not active_groups:
-            print("❌ ERROR: No active groups found! Please uncomment at least one group in TARGET_GROUP_TITLES")
-            print("Current TARGET_GROUP_TITLES:", TARGET_GROUP_TITLES)
-            exit(1)
-        
-        print(f"🎯 Active groups: {active_groups}")
-        
-        # প্রতিটি active গ্রুপ টাইটেলের জন্য চ্যানেল extract করুন
-        all_group_channels = {}
-        total_found_channels = 0
-        has_any_channels_found = False
-        
-        for group_title in active_groups:
-            print(f"\n🔍 Processing group: {group_title}")
-            channels = extract_group_channels('sonyliv_source.m3u', group_title)
-            # শুধু channels থাকলে all_group_channels এ যোগ করবে
-            if channels:
-                all_group_channels[group_title] = channels
-                total_found_channels += len(channels)
-                has_any_channels_found = True
-            else:
-                print(f"ℹ️ No channels found for group '{group_title}', skipping...")
-        
-        # যদি কোন গ্রুপেই চ্যানেল না থাকে, তাহলে শুধু empty AUTO-UPDATED section তৈরি করবে
-        if not has_any_channels_found:
-            print("ℹ️ No channels found for any active group, creating empty AUTO-UPDATED section...")
-            # শুধু timestamp সহ AUTO-UPDATED লাইন যোগ করবে
-            all_group_channels = {}  # খালি রাখা
-        
-        # মেইন প্লেলিস্ট আপডেট করুন - সবসময় TARGET_LINE_NUMBER এ রাখবে
-        updated_content, total_added_channels = force_groups_at_line(main_content, all_group_channels, TARGET_LINE_NUMBER)
+        # মেইন প্লেলিস্ট আপডেট করুন
+        updated_content = insert_sonyliv_content(main_content, channels, TARGET_LINE_NUMBER)
         
         # আপডেট করা কন্টেন্ট ফাইনাল ফাইলে সেভ করুন
         with open('sirometv_updated_final.m3u', 'w', encoding='utf-8') as f:
@@ -809,41 +669,18 @@ jobs:
         
         print(f"\n🎉 Live SonyLiv 🔄 Update Summary:")
         print(f"   Run type: {'Manual' if is_manual_run else 'Scheduled'}")
+        print(f"   Total channels added from SonyLiv: {len(channels)}")
         print(f"   Target line: {TARGET_LINE_NUMBER}")
-        print(f"   Total active groups: {len(active_groups)}")
-        print(f"   Total channels found: {total_found_channels}")
-        print(f"   Total channels added: {total_added_channels}")
-        print(f"   Configuration:")
-        print(f"     - TARGET_LINE_NUMBER = {TARGET_LINE_NUMBER}")
-        print(f"     - Active groups = {active_groups}")
         
-        # প্রতিটি গ্রুপের জন্য আলাদা summary
-        print(f"\n📊 Group-wise Summary:")
-        for group_title in active_groups:
-            if group_title in all_group_channels:
-                channels = all_group_channels[group_title]
-                channel_count = len(channels)
-                status = "✅" if channel_count > 0 else "❌"
-                
-                if channel_count > 0:
-                    first_channel_name = channels[0]['channel_name']
-                    naming_strategy = ""
-                    if group_title == "Live Event":
-                        naming_strategy = "(original names preserved - no 🔴Live Now🔴)"
-                    elif group_title == "Sports":
-                        naming_strategy = "(all named 'Sports Live')"
-                    elif group_title == "Akash Go":
-                        naming_strategy = "(original names preserved)"
-                    else:
-                        naming_strategy = "(original names)"
-                    
-                    print(f"   {status} {group_title}: {channel_count} channels {naming_strategy}")
-                    if group_title == "Akash Go" and channel_count > 0:
-                        print(f"      Sample: {first_channel_name}")
-                else:
-                    print(f"   {status} {group_title}: {channel_count} channels")
-            else:
-                print(f"   ❌ {group_title}: 0 channels (not found in source)")
+        # চ্যানেলের গ্রুপ ভিত্তিক কাউন্ট দেখান
+        group_counts = {}
+        for channel in channels:
+            group = channel['group_title']
+            group_counts[group] = group_counts.get(group, 0) + 1
+        
+        print(f"\n📊 SonyLiv Group-wise Summary:")
+        for group, count in group_counts.items():
+            print(f"   {group}: {count} channels")
         
         EOF
         
@@ -876,66 +713,19 @@ jobs:
         echo "   ✅ All Channel updates: $ALL_CHANNEL_UPDATES channels"
         echo "   ⛔ All Channel skips: $ALL_CHANNEL_SKIPS channels"
         
-        # Count total links for a sample channel
-        JAMUNA_LINKS=$(grep -A 10 "Jamuna TV" sirometv_updated_final.m3u | grep -c "^http" || echo "0")
-        echo "   📊 Sample - Jamuna TV has $JAMUNA_LINKS links"
-        
-        # Check order for Jamuna TV - verify Ayna links are on top
-        echo "🔍 Checking Jamuna TV link order (Ayna links should be on top):"
-        JAMUNA_SECTION=$(grep -A 20 "Jamuna TV" sirometv_updated_final.m3u | head -15)
-        JAMUNA_FIRST_FEW_LINKS=$(echo "$JAMUNA_SECTION" | grep "^http" | head -3)
-        echo "   First few links for Jamuna TV:"
-        echo "$JAMUNA_FIRST_FEW_LINKS" | while read line; do
-          echo "     - $line"
-        done
-        
-        # Check if Ayna links are present
-        AYNA_LINKS_COUNT=$(echo "$JAMUNA_SECTION" | grep -c "aynaott\|app.com\|ayt.com" || echo "0")
-        echo "   Ayna-specific links in Jamuna TV: $AYNA_LINKS_COUNT"
-        
-        if [ "$ALL_CHANNEL_UPDATES" -eq "0" ] && [ "$ALL_CHANNEL_SKIPS" -eq "0" ]; then
-            echo "⚠️ Warning: No All Channel updates or skips found"
-        else
-            echo "✅ All Channel updates verified"
-        fi
-        
         # Check Live Fancode updates
         echo "🔍 Checking Live Fancode 🔄 updates:"
-        MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - Multiple Groups" sirometv_updated_final.m3u || echo "0")
-        echo "   Multiple Groups section: $MULTIPLE_GROUPS_SECTION"
-        
-        if [ "$MULTIPLE_GROUPS_SECTION" -eq "0" ]; then
-            echo "⚠️ Warning: No Multiple Groups section found"
-        else
-            # Check section position
-            SECTION_LINE=$(grep -n "#AUTO-UPDATED - Multiple Groups" sirometv_updated_final.m3u | cut -d: -f1)
-            echo "   📍 Multiple Groups section at line: $SECTION_LINE"
-        fi
+        LIVE_EVENT_GROUP=$(grep -c "# --- Live Event Group ---" sirometv_updated_final.m3u || echo "0")
+        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' sirometv_updated_final.m3u || echo "0")
+        echo "   Live Event Group section: $LIVE_EVENT_GROUP"
+        echo "   Live Event channels: $LIVE_EVENT_COUNT"
         
         # Check Live SonyLiv updates
         echo "🔍 Checking Live SonyLiv 🔄 updates:"
-        SONY_MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - SonyLiv Groups" sirometv_updated_final.m3u || echo "0")
-        echo "   SonyLiv Multiple Groups section: $SONY_MULTIPLE_GROUPS_SECTION"
-        
-        if [ "$SONY_MULTIPLE_GROUPS_SECTION" -eq "0" ]; then
-            echo "⚠️ Warning: No SonyLiv Multiple Groups section found"
-        else
-            # Check section position
-            SONY_SECTION_LINE=$(grep -n "#AUTO-UPDATED - SonyLiv Groups" sirometv_updated_final.m3u | cut -d: -f1)
-            echo "   📍 SonyLiv Multiple Groups section at line: $SONY_SECTION_LINE"
-        fi
-        
-        # Check for Live Event group
-        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' sirometv_updated_final.m3u || echo "0")
-        echo "   📺 Live Event channels: $LIVE_EVENT_COUNT"
-        
-        # Verify no 🔴Live Now🔴 in Live Event group
-        LIVE_NOW_COUNT=$(grep -c '🔴Live Now🔴' sirometv_updated_final.m3u || echo "0")
-        if [ "$LIVE_NOW_COUNT" -gt "0" ]; then
-            echo "⚠️ Warning: Found $LIVE_NOW_COUNT instances of '🔴Live Now🔴'"
-        else
-            echo "✅ No '🔴Live Now🔴' found - using original channel names"
-        fi
+        SONY_GROUP=$(grep -c "# --- SonyLiv Group ---" sirometv_updated_final.m3u || echo "0")
+        SONY_CHANNEL_COUNT=$(grep -c 'group-title="SonyLiv"' sirometv_updated_final.m3u || echo "0")
+        echo "   SonyLiv Group section: $SONY_GROUP"
+        echo "   SonyLiv channels: $SONY_CHANNEL_COUNT"
         
         # Verify no "No channels found" lines
         if grep -q "No channels found" sirometv_updated_final.m3u; then
@@ -943,6 +733,14 @@ jobs:
             exit 1
         else
             echo "✅ 'No channels found' line is completely removed!"
+        fi
+        
+        # Verify 🔴Live Now🔴 is not used
+        LIVE_NOW_COUNT=$(grep -c "🔴Live Now🔴" sirometv_updated_final.m3u || echo "0")
+        if [ "$LIVE_NOW_COUNT" -gt "0" ]; then
+            echo "⚠️ Warning: Found $LIVE_NOW_COUNT instances of '🔴Live Now🔴'"
+        else
+            echo "✅ No '🔴Live Now🔴' found - using original channel names"
         fi
         
         # Move final file to main playlist
@@ -969,27 +767,23 @@ jobs:
           ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" sirometv.m3u || echo "0")
           ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" sirometv.m3u || echo "0")
           LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' sirometv.m3u || echo "0")
-          SONY_LIVE_EVENT_COUNT=$(grep -c '# --- Live Event Group ---' sirometv.m3u || echo "0")
+          SONY_CHANNEL_COUNT=$(grep -c 'group-title="SonyLiv"' sirometv.m3u || echo "0")
           
           # প্রথম রানের জন্য বিশেষ commit message
-          # Check if this is the first run by looking at git history
           FIRST_RUN=false
           if ! git log --oneline -n 1 --grep="🆗 Sirome TV" >/dev/null 2>&1; then
             FIRST_RUN=true
           fi
           
           if [ "$FIRST_RUN" = true ]; then
-            # প্রথম রানের জন্য
             COMMIT_MESSAGE="🆗 Sirome TV : 🆕 Start 🆕 - "
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            # Manual run
             COMMIT_MESSAGE="🆗 Sirome TV : 🆕 Start Done ✅ - "
           else
-            # Scheduled run
             COMMIT_MESSAGE="🆗 Sirome TV : 🔄 Updated Done ✅ - "
           fi
           
-          COMMIT_MESSAGE+="All Channel ($ALL_CHANNEL_UPDATES updates, $ALL_CHANNEL_SKIPS skips) + Fancode Live Event ($LIVE_EVENT_COUNT channels) + SonyLiv Live Event ($SONY_LIVE_EVENT_COUNT channels) - $BANGLADESH_TIME"
+          COMMIT_MESSAGE+="All Channel ($ALL_CHANNEL_UPDATES updates, $ALL_CHANNEL_SKIPS skips) + Fancode Live Event ($LIVE_EVENT_COUNT channels) + SonyLiv ($SONY_CHANNEL_COUNT channels) - $BANGLADESH_TIME"
           
           git commit -m "$COMMIT_MESSAGE"
           git push
@@ -1000,7 +794,7 @@ jobs:
           echo "   All Channel 🔄: $ALL_CHANNEL_UPDATES channels updated"
           echo "   All Channel ⛔: $ALL_CHANNEL_SKIPS channels skipped"
           echo "   Fancode Live Event: $LIVE_EVENT_COUNT channels"
-          echo "   SonyLiv Live Event: $SONY_LIVE_EVENT_COUNT channels"
+          echo "   SonyLiv Channels: $SONY_CHANNEL_COUNT channels"
           echo "   Time: $BANGLADESH_TIME"
         fi
         
