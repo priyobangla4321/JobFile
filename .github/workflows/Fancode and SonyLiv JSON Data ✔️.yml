@@ -1,0 +1,288 @@
+name: Fancode and SonyLiv JSON Data ✔️
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-json:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout workflow repository (JobFile)
+      uses: actions/checkout@v4
+      with:
+        repository: priyobangla4321/JobFile
+        token: ${{ secrets.PAT_TOKEN }}
+        path: ./workflow-repo
+
+    - name: Checkout playlist repository (sirometv/playlist)
+      uses: actions/checkout@v4
+      with:
+        repository: sirometv/playlist
+        token: ${{ secrets.PAT_TOKEN }}
+        path: ./playlist-repo
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: pip install requests pytz
+
+    - name: Download and update JSON
+      env:
+        JSON_URL: ${{ secrets.FANCODE_SIROME }}
+      run: |
+        import os
+        import requests
+        import json
+        from datetime import datetime
+        import pytz
+        import re
+        
+        print("🚀 Starting JSON update process...")
+        
+        json_url = os.environ.get('JSON_URL')
+        
+        if not json_url:
+            print("❌ Error: JSON_URL environment variable is empty!")
+            exit(1)
+        
+        print(f"📥 Source URL: {json_url}")
+        
+        try:
+            response = requests.get(json_url, timeout=10)
+            response.raise_for_status()
+            original_data = response.json()
+            print("✅ Successfully downloaded JSON data")
+        except Exception as e:
+            print(f"❌ Download failed: {e}")
+            exit(1)
+        
+        def replace_url(url):
+            """URL প্রতিস্থাপন ফাংশন"""
+            if not isinstance(url, str):
+                return url
+            
+            # 1. প্রথমে dai-partner.fancode.com/primary/ কে bd-mc-fblive.fancode.com/mumbai/ এ পরিবর্তন
+            if "https://dai-partner.fancode.com/primary/" in url:
+                # "https://dai-partner.fancode.com/primary/" বাদ দিয়ে বাকি অংশ নেয়া
+                old_prefix = "https://dai-partner.fancode.com/primary/"
+                remaining = url.replace(old_prefix, "")
+                new_url = "https://bd-mc-fblive.fancode.com/mumbai/" + remaining
+                print(f"   🔄 dai-partner → bd-mc-fblive: {url[:60]}...")
+                return new_url
+            
+            # 2. https://in কে https://bd তে পরিবর্তন (আগের ফাংশনালিটি)
+            if "https://in-mc-fblive.fancode.com" in url:
+                new_url = url.replace("https://in-mc-fblive.fancode.com", "https://bd-mc-fblive.fancode.com")
+                print(f"   🔄 in-mc-fblive → bd-mc-fblive: {url[:60]}...")
+                return new_url
+            
+            return url
+        
+        # matches ডাটা নেয়া
+        matches = original_data.get("matches", [])
+        
+        # প্রতিটি match পরিবর্তন করা
+        modified_matches = []
+        adfree_replaced = 0
+        dai_replaced = 0
+        
+        for match in matches:
+            if isinstance(match, dict):
+                # adfree_url ফিল্ড পরিবর্তন
+                if "adfree_url" in match:
+                    old_url = match.get("adfree_url", "")
+                    if old_url:
+                        new_url = replace_url(old_url)
+                        if new_url != old_url:
+                            match["adfree_url"] = new_url
+                            adfree_replaced += 1
+                
+                # dai_url ফিল্ড পরিবর্তন (এটাও গুরুত্বপূর্ণ)
+                if "dai_url" in match:
+                    old_url = match.get("dai_url", "")
+                    if old_url:
+                        new_url = replace_url(old_url)
+                        if new_url != old_url:
+                            match["dai_url"] = new_url
+                            dai_replaced += 1
+            
+            modified_matches.append(match)
+        
+        print(f"\n✅ Summary:")
+        print(f"   - adfree_url replaced: {adfree_replaced}")
+        print(f"   - dai_url replaced: {dai_replaced}")
+        
+        # বাংলাদেশ টাইমজোন
+        bd_timezone = pytz.timezone('Asia/Dhaka')
+        current_time = datetime.now(bd_timezone)
+        formatted_time = current_time.strftime("%I:%M:%S %p %d-%m-%Y")
+        
+        # নতুন JSON তৈরি
+        updated_data = {
+            "name": "Fancode Live Matches Data in Json",
+            "telegram": "https://t.me/sirometv",
+            "last update time": formatted_time,
+            "webtv": "https://sirometv-tv.vercel.app",
+            "matches": modified_matches
+        }
+        
+        # ফাইল সেভ
+        output_file = 'playlist-repo/fancode.json'
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(updated_data, f, indent=4, ensure_ascii=False)
+        
+        print(f"\n✅ JSON updated successfully at {formatted_time}")
+        
+        # ভেরিফিকেশন - নতুন URL সঠিকভাবে বসেছে কিনা
+        print("\n🔍 Verification - checking for old URLs:")
+        with open(output_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if "dai-partner.fancode.com/primary" in content:
+                print("   ⚠️ WARNING: Still found 'dai-partner.fancode.com/primary' in file!")
+                # দেখান কোথায় আছে
+                lines = content.split('\n')
+                for i, line in enumerate(lines):
+                    if 'dai-partner.fancode.com/primary' in line:
+                        print(f"      Line {i+1}: {line.strip()[:100]}")
+            else:
+                print("   ✅ No 'dai-partner.fancode.com/primary' found - replacement successful!")
+            
+            if "bd-mc-fblive.fancode.com/mumbai" in content:
+                print("   ✅ New URL pattern 'bd-mc-fblive.fancode.com/mumbai' found in file")
+      shell: python
+
+    - name: Update SonyLiv JSON
+      env:
+        SONY_LIV_JSON_URL: ${{ secrets.SONY_LIV_JSON }}
+      run: |
+        import os
+        import requests
+        import json
+        from datetime import datetime
+        import pytz
+        
+        print("\n🚀 Starting SonyLiv JSON update process...")
+        
+        sony_url = os.environ.get('SONY_LIV_JSON_URL')
+        
+        if not sony_url:
+            print("❌ Error: SONY_LIV_JSON_URL environment variable is empty!")
+            exit(1)
+        
+        print(f"📥 SonyLiv Source URL: {sony_url}")
+        
+        try:
+            response = requests.get(sony_url, timeout=10)
+            response.raise_for_status()
+            sony_data = response.json()
+            print("✅ Successfully downloaded SonyLiv JSON data")
+        except Exception as e:
+            print(f"❌ SonyLiv download failed: {e}")
+            exit(1)
+        
+        # matches ডাটা নেয়া
+        matches = sony_data.get("matches", [])
+        
+        # বাংলাদেশ টাইমজোন
+        bd_timezone = pytz.timezone('Asia/Dhaka')
+        current_time = datetime.now(bd_timezone)
+        formatted_time = current_time.strftime("%I:%M:%S %p %d-%m-%Y")
+        
+        # নতুন SonyLiv JSON তৈরি (নির্দিষ্ট ফিল্ড বাদ দিয়ে)
+        updated_sony_data = {
+            "name": "SonyLiv Live Matches Data in Json",
+            "telegram": "https://t.me/sirometv",
+            "last update time": formatted_time,
+            "webtv": "https://sirometv-tv.vercel.app",
+            "matches": matches
+        }
+        
+        # SonyLiv ফাইল সেভ
+        sony_output_file = 'playlist-repo/SonyLiv.json'
+        with open(sony_output_file, 'w', encoding='utf-8') as f:
+            json.dump(updated_sony_data, f, indent=4, ensure_ascii=False)
+        
+        print(f"\n✅ SonyLiv JSON updated successfully at {formatted_time}")
+        print(f"📁 Saved to: {sony_output_file}")
+        
+        # ভেরিফিকেশন
+        print("\n🔍 SonyLiv Verification:")
+        with open(sony_output_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+            if "Sonyliv Live Matches Data in Json" in content:
+                print("   ✅ Old name found in content (should not be there!)")
+            else:
+                print("   ✅ New name 'SonyLiv Live Matches Data in Json' applied")
+            
+            if "t.me/+rQTz5VL8CRpjNTZl" in content:
+                print("   ⚠️ Old telegram link found!")
+            else:
+                print("   ✅ New telegram link 'https://t.me/sirometv' applied")
+      shell: python
+
+    - name: Check changes
+      working-directory: ./playlist-repo
+      run: |
+        echo "🔍 Checking git status..."
+        git status
+        
+        echo ""
+        echo "📊 Checking for old URL pattern in fancode.json:"
+        if grep -n "dai-partner.fancode.com/primary" fancode.json; then
+          echo "❌ ERROR: Old URL pattern still exists!"
+          exit 1
+        else
+          echo "✅ No old URL pattern found"
+        fi
+        
+        echo ""
+        echo "📊 Checking for new URL pattern in fancode.json:"
+        grep -n "bd-mc-fblive.fancode.com/mumbai" fancode.json | head -5
+        
+        echo ""
+        echo "📊 SonyLiv.json content check:"
+        echo "First 20 lines of SonyLiv.json:"
+        head -20 SonyLiv.json
+        
+        echo ""
+        echo "📊 SonyLiv.json matches count:"
+        grep -c '"match_name"' SonyLiv.json || echo "0 matches found"
+
+    - name: Commit and push changes
+      working-directory: ./playlist-repo
+      run: |
+        git config --local user.email "actions@github.com"
+        git config --local user.name "GitHub Actions"
+        
+        git add fancode.json SonyLiv.json
+        
+        if git diff --staged --quiet; then
+          echo "🟡 No changes to commit"
+        else
+          CURRENT_TIME=$(date +'%I:%M:%S %p %d-%m-%Y')
+          
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            COMMIT_MSG="🆗 FANCODE & SONY 🤖 JSON 🆗 Started at $CURRENT_TIME"
+          else
+            COMMIT_MSG="🆗 FANCODE & SONY 🤖 JSON 🔄 Updated Done ✅ at $CURRENT_TIME"
+          fi
+          
+          git commit -m "$COMMIT_MSG"
+          git push origin main
+          echo "✅ Changes committed and pushed!"
+        fi
+
+    - name: Clean up
+      if: always()
+      run: |
+        rm -rf workflow-repo
+        rm -rf playlist-repo
