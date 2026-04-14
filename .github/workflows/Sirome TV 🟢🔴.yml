@@ -371,7 +371,7 @@ jobs:
         
         # গ্রুপ টাইটেলের লিস্ট
         TARGET_GROUP_TITLES = [
-       			"SonyLiv"
+       			"SonyLiv",
             "Live Event",
             # "Cricket",    # uncomment করতে পারেন যদি প্রয়োজন হয়
             # "Akash Go",    # uncomment করতে পারেন যদি প্রয়োজন হয়
