@@ -1,4 +1,4 @@
-name: Fancode-BD-IND and SonyLiv
+name: Fancode-BD-IND and SonyLiv ❇
 
 on:
   schedule:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout playlist repository (public)
         uses: actions/checkout@v3
         with:
-          repository: sirometv/playlist
+          repository: buzzinguaecn/playlist
           token: ${{ secrets.PAT_TOKEN }}
           path: ./playlist-repo
           fetch-depth: 0
@@ -40,8 +40,8 @@ jobs:
           import pytz
 
           # JSON ফাইলের URLs
-          FANCODE_JSON_URL = "https://raw.githubusercontent.com/sirometv/playlist/main/fancode.json"
-          SONYLIV_JSON_URL = "https://raw.githubusercontent.com/sirometv/playlist/main/SonyLiv.json"
+          FANCODE_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/playlist/main/fancode.json"
+          SONYLIV_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/playlist/main/SonyLiv.json"
           
           def load_json_from_url(url, filename):
               """URL থেকে JSON লোড করা"""
@@ -178,11 +178,10 @@ jobs:
               
               content = [
                   "#EXTM3U",
-                  "#🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।",
                   "#🔴All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.",
                   f"#Update Time ✔️: {update_time} (Bangladesh Time)",
-                  "#Telegram 🔗: https://t.me/sirometv",
-                  "#WEB TV 📺: https://sirometv-tv.vercel.app",
+                  "#Telegram 🔗: https://t.me/askeamiratv",
+                  "#WEB TV 📺: https://t.me/askeamiratv",
                   "",  # ১ম গ্যাফ লাইন
                   "",  # ২য় গ্যাফ লাইন
                   "",  # ৩য় গ্যাফ লাইন
@@ -305,9 +304,9 @@ jobs:
             # লিঙ্ক দেখানো
             echo ""
             echo "🌐 Updated files available at:"
-            echo "https://github.com/sirometv/playlist/blob/main/fancodeBD.m3u"
-            echo "https://github.com/sirometv/playlist/blob/main/fancodeIND.m3u"
-            echo "https://github.com/sirometv/playlist/blob/main/SonyLiv.m3u"
+            echo "https://github.com/buzzinguaecn/playlist/blob/main/fancodeBD.m3u"
+            echo "https://github.com/buzzinguaecn/playlist/blob/main/fancodeIND.m3u"
+            echo "https://github.com/buzzinguaecn/playlist/blob/main/SonyLiv.m3u"
           fi
 
       - name: Clean up
