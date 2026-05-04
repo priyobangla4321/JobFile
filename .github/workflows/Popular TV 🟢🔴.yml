@@ -17,7 +17,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.PAT_TOKEN }}
-        repository: buzzinguaecn/playlist
+        repository: buzzinguaecn/Pizza
         path: playlist-repo
         fetch-depth: 0
         
@@ -30,10 +30,10 @@ jobs:
         echo "" > main_playlist.m3u
         
         # Source playlists
-        curl -s -L -o source_playlist.m3u "https://raw.githubusercontent.com/buzzinguaecn/playlist/gh-pages/PopularTV.m3u"
-        curl -s -L -o ayna_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/playlist/main/Ayna.m3u"
-        curl -s -L -o fancode_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/playlist/main/fancodeBD.m3u"
-        curl -s -L -o sonyliv_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/playlist/main/SonyLiv.m3u"
+        curl -s -L -o source_playlist.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/gh-pages/PopularTV.m3u"
+        curl -s -L -o ayna_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/Ayna.m3u"
+        curl -s -L -o fancode_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizzat/main/fancodeBD.m3u"
+        curl -s -L -o sonyliv_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/SonyLiv.m3u"
         
         # Verify downloads
         for file in source_playlist.m3u ayna_source.m3u fancode_source.m3u sonyliv_source.m3u; do
@@ -761,7 +761,7 @@ jobs:
             return updated_content, total_channels
         
         # All Channel update এর পরের temporary ফাইল লোড করুন
-        with open('PopularTV_updated.m3u', 'r', encoding='utf-8') as f:
+        with open('PopularTV_updated_final.m3u', 'r', encoding='utf-8') as f:
             main_content = f.read()
         
         # Check if manual run or scheduled
@@ -950,7 +950,7 @@ jobs:
         
         echo "✅ Combined verification completed!"
         
-    - name: Commit and push changes to buzzinguaecn/playlist
+    - name: Commit and push changes to buzzinguaecn/Pizza
       working-directory: playlist-repo
       run: |
         echo "💾 Saving combined changes to repository..."
