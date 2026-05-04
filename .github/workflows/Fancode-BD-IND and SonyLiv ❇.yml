@@ -1,4 +1,4 @@
-name: Fancode-BD-IND and SonyLiv ❇
+name: Fancode-BD-IND and SonyLiv
 
 on:
   schedule:
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout playlist repository (public)
         uses: actions/checkout@v3
         with:
-          repository: buzzinguaecn/playlist
+          repository: buzzinguaecn/Pizza
           token: ${{ secrets.PAT_TOKEN }}
           path: ./playlist-repo
           fetch-depth: 0
@@ -40,8 +40,8 @@ jobs:
           import pytz
 
           # JSON ফাইলের URLs
-          FANCODE_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/playlist/main/fancode.json"
-          SONYLIV_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/playlist/main/SonyLiv.json"
+          FANCODE_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/fancode.json"
+          SONYLIV_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/SonyLiv.json"
           
           def load_json_from_url(url, filename):
               """URL থেকে JSON লোড করা"""
@@ -178,10 +178,12 @@ jobs:
               
               content = [
                   "#EXTM3U",
-                  "#🔴All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source.",
+                  "# 👉 All links included in this file have been collected from publicly available sources. If any content owner wishes to have their source removed, please feel free to contact us. We deeply respect your work and opinions, and we will promptly honor your request without any objection.",
+                  "# 👉 Please note that neither I nor our team own any of the TV channels listed here. All channels belong to their respective owners. We only collect and share freely available sources so that everyone can enjoy them easily. These streaming links are widely accessible across many platforms on the internet. Our intention is solely for entertainment purposes.",
+                  "# 👉 If you find any of your content or source in our playlist and would like it to be removed, please feel free to contact us via inbox. We will take immediate action. 👈",
                   f"#Update Time ✔️: {update_time} (Bangladesh Time)",
-                  "#Telegram 🔗: https://t.me/askeamiratv",
-                  "#WEB TV 📺: https://t.me/askeamiratv",
+                  "#Telegram 🔗: https://contact2.me/lpMKn8",
+                  "#WEB TV 📺: https://contact2.me/lpMKn8",
                   "",  # ১ম গ্যাফ লাইন
                   "",  # ২য় গ্যাফ লাইন
                   "",  # ৩য় গ্যাফ লাইন
@@ -304,9 +306,9 @@ jobs:
             # লিঙ্ক দেখানো
             echo ""
             echo "🌐 Updated files available at:"
-            echo "https://github.com/buzzinguaecn/playlist/blob/main/fancodeBD.m3u"
-            echo "https://github.com/buzzinguaecn/playlist/blob/main/fancodeIND.m3u"
-            echo "https://github.com/buzzinguaecn/playlist/blob/main/SonyLiv.m3u"
+            echo "https://github.com/buzzinguaecn/Pizza/blob/main/fancodeBD.m3u"
+            echo "https://github.com/buzzinguaecn/Pizza/blob/main/fancodeIND.m3u"
+            echo "https://github.com/buzzinguaecn/Pizza/blob/main/SonyLiv.m3u"
           fi
 
       - name: Clean up
