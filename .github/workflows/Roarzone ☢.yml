@@ -21,13 +21,13 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           path: ./workflow-repo
           
-      # ধাপ ২: টার্গেট রিপো চেকআউট (sirometv/playlist - যেখানে m3u ফাইল আপডেট হবে)
-      - name: Checkout playlist repository (sirometv/playlist)
+      # ধাপ ২: টার্গেট রিপো চেকআউট (buzzinguaecn/Pizza - যেখানে m3u ফাইল আপডেট হবে)
+      - name: Checkout playlist repository (buzzinguaecn/Pizza)
         uses: actions/checkout@v4
         with:
-          repository: sirometv/playlist
+          repository: buzzinguaecn/Pizza
           token: ${{ secrets.PAT_TOKEN }}
-          path: ./playlist-repo
+          path: ./Pizza-repo
           
       - name: Get current time
         id: time
@@ -39,24 +39,24 @@ jobs:
       # ধাপ ৩: চেক করা এটি প্রথম রান কিনা
       - name: Check if first run
         id: check_first
-        working-directory: ./playlist-repo
+        working-directory: ./Pizza-repo
         run: |
-          # চেক করা roarzone.m3u ফাইল আছে কিনা
-          if [ ! -f "roarzone.m3u" ]; then
+          # চেক করা Roarzone.m3u ফাইল আছে কিনা
+          if [ ! -f "Roarzone.m3u" ]; then
             echo "FIRST_RUN=true" >> $GITHUB_OUTPUT
-            echo "✅ Detected: First run (roarzone.m3u does not exist)"
+            echo "✅ Detected: First run (Roarzone.m3u does not exist)"
           else
             echo "FIRST_RUN=false" >> $GITHUB_OUTPUT
-            echo "✅ Detected: Scheduled update (roarzone.m3u exists)"
+            echo "✅ Detected: Scheduled update (Roarzone.m3u exists)"
           fi
           
       - name: Fetch and update playlist
         id: fetch-playlist
-        working-directory: ./playlist-repo
+        working-directory: ./Pizza-repo
         run: |
           # সিক্রেট থেকে প্লেলিস্ট লিংক পড়া
-          if [ -z "${{ secrets.SIROMETV_ROARZONE }}" ]; then
-            echo "❌ Error: SIROMETV_ROARZONE secret is not set"
+          if [ -z "${{ secrets.ROARZONE }}" ]; then
+            echo "❌ Error: ROARZONE secret is not set"
             echo "ℹ️ Please add the secret in GitHub repository settings"
             exit 1
           fi
@@ -64,13 +64,13 @@ jobs:
           echo "📥 Downloading playlist from secret URL..."
           
           # প্লেলিস্ট ডাউনলোড করা (timeout সহ)
-          curl -s --max-time 30 "${{ secrets.SIROMETV_ROARZONE }}" -o temp_playlist.m3u
+          curl -s --max-time 30 "${{ secrets.ROARZONE }}" -o temp_playlist.m3u
           CURL_EXIT_CODE=$?
           
           if [ $CURL_EXIT_CODE -ne 0 ]; then
             echo "❌ Error: Curl failed with exit code $CURL_EXIT_CODE"
             echo "ℹ️ Trying without silent mode to see error..."
-            curl -L --max-time 30 "${{ secrets.SIROMETV_ROARZONE }}" -o temp_playlist.m3u
+            curl -L --max-time 30 "${{ secrets.ROARZONE }}" -o temp_playlist.m3u
             exit 1
           fi
           
@@ -85,21 +85,21 @@ jobs:
           DOWNLOAD_LINES=$(wc -l < temp_playlist.m3u)
           echo "📊 Downloaded file size: $DOWNLOAD_LINES lines"
           
-          # হেডার তৈরি করা (Bangla এবং English টেক্সট ঠিক করে দেওয়া)
-          echo "#EXTM3U" > roarzone.m3u
-          echo "#🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না।" >> roarzone.m3u
-          echo "#🔴 All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source." >> roarzone.m3u
-          echo "#Update Time ✔️: ${{ steps.time.outputs.formattedTime }} (Bangladesh Time)" >> roarzone.m3u
-          echo "#Telegram 🔗: https://t.me/sirometv" >> roarzone.m3u
-          echo "#WEB TV 📺: https://sirometv-tv.vercel.app" >> roarzone.m3u
-          echo "" >> roarzone.m3u
+          # হেডার তৈরি করা
+          echo "#EXTM3U" > Roarzone.m3u
+          echo "# 👉 All links included in this file have been collected from publicly available sources. If any content owner wishes to have their source removed, please feel free to contact us. We deeply respect your work and opinions, and we will promptly honor your request without any objection." >> Roarzone.m3u
+          echo "# 👉 Please note that neither I nor our team own any of the TV channels listed here. All channels belong to their respective owners. We only collect and share freely available sources so that everyone can enjoy them easily. These streaming links are widely accessible across many platforms on the internet. Our intention is solely for entertainment purposes." >> Roarzone.m3u
+          echo "# 👉 If you find any of your content or source in our playlist and would like it to be removed, please feel free to contact us via inbox. We will take immediate action. 👈" >> Roarzone.m3u
+          echo "# 👉 Inbox Us: https://contact2.me/lpMKn8 👈" >> Roarzone.m3u
+          echo "#Update Time ✔️: ${{ steps.time.outputs.formattedTime }} (Bangladesh Time)" >> Roarzone.m3u
+          echo "" >> Roarzone.m3u
           
           # আসল প্লেলিস্ট কন্টেন্ট যোগ করা (প্রথম লাইন #EXTM3U বাদ দিয়ে)
-          tail -n +2 temp_playlist.m3u >> roarzone.m3u
+          tail -n +2 temp_playlist.m3u >> Roarzone.m3u
           
           # ফাইল সাইজ চেক
-          LINES=$(wc -l < roarzone.m3u)
-          CHANNEL_COUNT=$(grep -c "^#EXTINF:-1" roarzone.m3u 2>/dev/null || echo "0")
+          LINES=$(wc -l < Roarzone.m3u)
+          CHANNEL_COUNT=$(grep -c "^#EXTINF:-1" Roarzone.m3u 2>/dev/null || echo "0")
           echo "📊 Final playlist size: $LINES lines"
           echo "📺 Channel count: $CHANNEL_COUNT"
           
@@ -115,25 +115,25 @@ jobs:
           
       - name: Check if playlist changed
         id: check_changes
-        working-directory: ./playlist-repo
+        working-directory: ./Pizza-repo
         run: |
           changes_detected=false
           
           echo "🔍 Checking for changes in playlist..."
           
-          if [ -f "roarzone.m3u" ] && [ -s "roarzone.m3u" ]; then
+          if [ -f "Roarzone.m3u" ] && [ -s "Roarzone.m3u" ]; then
             # ফাইল এক্সিস্ট করলে changes চেক করুন
-            if ! git diff --quiet roarzone.m3u; then
+            if ! git diff --quiet Roarzone.m3u; then
               changes_detected=true
-              echo "🔄 Changes detected in roarzone.m3u"
+              echo "🔄 Changes detected in Roarzone.m3u"
               
               # পরিবর্তনের বিস্তারিত দেখান
               echo "📊 Changes summary:"
-              git diff --stat roarzone.m3u
+              git diff --stat Roarzone.m3u
               
               # লাইন সংখ্যার পরিবর্তন দেখান
-              OLD_LINES=$(git show HEAD:roarzone.m3u 2>/dev/null | wc -l || echo "0")
-              NEW_LINES=$(wc -l < roarzone.m3u)
+              OLD_LINES=$(git show HEAD:Roarzone.m3u 2>/dev/null | wc -l || echo "0")
+              NEW_LINES=$(wc -l < Roarzone.m3u)
               DIFF=$((NEW_LINES - OLD_LINES))
               echo "📈 Line count change: $DIFF lines ($OLD_LINES → $NEW_LINES)"
             else
@@ -141,20 +141,20 @@ jobs:
             fi
           else
             changes_detected=true
-            echo "📝 New roarzone.m3u file will be created"
+            echo "📝 New Roarzone.m3u file will be created"
           fi
           
           echo "changes_detected=$changes_detected" >> $GITHUB_OUTPUT
           
       - name: Commit and push changes to playlist repo
         if: steps.check_changes.outputs.changes_detected == 'true'
-        working-directory: ./playlist-repo
+        working-directory: ./Pizza-repo
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
           # changes staged করা
-          git add roarzone.m3u
+          git add Roarzone.m3u
           
           # প্রথম রান কিনা চেক করে আলাদা commit message
           if [ "${{ steps.check_first.outputs.FIRST_RUN }}" = "true" ]; then
@@ -174,14 +174,14 @@ jobs:
           echo "📝 Commit message: $COMMIT_MSG"
           git commit -m "$COMMIT_MSG"
           
-          echo "🚀 Pushing changes to playlist repository (sirometv/playlist)..."
+          echo "🚀 Pushing changes to playlist repository (buzzinguaecn/Pizza)..."
           git push
           
           # সফল মেসেজ
           echo "✅ Playlist updated successfully!"
           echo "📊 Final playlist stats:"
-          LINES=$(wc -l < roarzone.m3u)
-          CHANNELS=$(grep -c "^#EXTINF:-1" roarzone.m3u 2>/dev/null || echo "0")
+          LINES=$(wc -l < Roarzone.m3u)
+          CHANNELS=$(grep -c "^#EXTINF:-1" Roarzone.m3u 2>/dev/null || echo "0")
           echo "   - Total lines: $LINES"
           echo "   - Total channels: $CHANNELS"
           echo "🕐 Next auto-sync in 20 minutes"
@@ -197,7 +197,7 @@ jobs:
         if: always()
         run: |
           echo "🧹 Cleaning up temporary files..."
-          rm -rf ./playlist-repo
+          rm -rf ./Pizza-repo
           rm -rf ./workflow-repo
           echo "✅ Cleanup completed!"
           
@@ -217,7 +217,7 @@ jobs:
         run: |
           echo "🎊 Roarzone ☢ workflow completed successfully!"
           echo "📅 Next update in 20 minutes"
-          echo "📁 Playlist updated in: sirometv/playlist"
+          echo "📁 Playlist updated in: buzzinguaecn/Pizza"
           
       - name: Failure Notification
         if: failure()
@@ -226,5 +226,5 @@ jobs:
           echo "Please check the logs for errors."
           echo "Common issues:"
           echo "  - PAT_TOKEN secret not set correctly"
-          echo "  - SIROMETV_ROARZONE secret not set or invalid URL"
+          echo "  - ROARZONE secret not set or invalid URL"
           echo "  - Network issues downloading playlist"
