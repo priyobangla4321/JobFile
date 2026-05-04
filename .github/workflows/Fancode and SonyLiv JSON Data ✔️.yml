@@ -1,4 +1,4 @@
-name: Fancode and SonyLiv JSON Data ✔️
+name: FANCODE & SONY Json ♻
 
 on:
   schedule:
@@ -20,10 +20,10 @@ jobs:
         token: ${{ secrets.PAT_TOKEN }}
         path: ./workflow-repo
 
-    - name: Checkout playlist repository (sirometv/playlist)
+    - name: Checkout playlist repository (buzzinguaecn/playlist)
       uses: actions/checkout@v4
       with:
-        repository: sirometv/playlist
+        repository: buzzinguaecn/playlist
         token: ${{ secrets.PAT_TOKEN }}
         path: ./playlist-repo
 
@@ -37,7 +37,7 @@ jobs:
 
     - name: Download and update JSON
       env:
-        JSON_URL: ${{ secrets.FANCODE_SIROME }}
+        JSON_URL: ${{ secrets.FANCODE_JSON }}
       run: |
         import os
         import requests
@@ -129,9 +129,9 @@ jobs:
         # নতুন JSON তৈরি
         updated_data = {
             "name": "Fancode Live Matches Data in Json",
-            "telegram": "https://t.me/sirometv",
+            "telegram": "https://t.me/askeamiratv",
             "last update time": formatted_time,
-            "webtv": "https://sirometv-tv.vercel.app",
+            "webtv": "https://noontv-tv.vercel.app",
             "matches": modified_matches
         }
         
@@ -200,9 +200,9 @@ jobs:
         # নতুন SonyLiv JSON তৈরি (নির্দিষ্ট ফিল্ড বাদ দিয়ে)
         updated_sony_data = {
             "name": "SonyLiv Live Matches Data in Json",
-            "telegram": "https://t.me/sirometv",
+            "telegram": "https://t.me/askeamiratv",
             "last update time": formatted_time,
-            "webtv": "https://sirometv-tv.vercel.app",
+            "webtv": "https://noontv-tv.vercel.app",
             "matches": matches
         }
         
@@ -226,7 +226,7 @@ jobs:
             if "t.me/+rQTz5VL8CRpjNTZl" in content:
                 print("   ⚠️ Old telegram link found!")
             else:
-                print("   ✅ New telegram link 'https://t.me/sirometv' applied")
+                print("   ✅ New telegram link 'https://t.me/askeamiratv' applied")
       shell: python
 
     - name: Check changes
