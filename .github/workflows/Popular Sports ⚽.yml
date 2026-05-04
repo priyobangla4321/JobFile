@@ -26,11 +26,11 @@ jobs:
       with:
         token: ${{ secrets.PAT_TOKEN }}
         repository: buzzinguaecn/Pizza
-        path: ./playlist-repo
+        path: ./Pizza-repo
         fetch-depth: 0
         
     - name: Download all playlists
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "📥 Downloading all required playlists..."
         
@@ -53,7 +53,7 @@ jobs:
         done
         
     - name: Copy from source to main playlist
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "📋 Copying from source playlist to main playlist..."
         
@@ -70,13 +70,13 @@ jobs:
         echo "✅ Main playlist now has $LINES lines"
         
     - name: Backup original playlist
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         cp main_playlist.m3u main_playlist_backup.m3u
         echo "📦 Original playlist backed up"
         
     - name: Update All Channel 🔄
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "🔄 Starting All Channel 🔄 update..."
         
@@ -295,7 +295,7 @@ jobs:
         echo "✅ All Channel 🔄 update completed!"
         
     - name: Update Live Fancode 🔄
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "🔄 Starting Live Fancode 🔄 update..."
         
@@ -541,7 +541,7 @@ jobs:
         echo "✅ Live Fancode 🔄 update completed!"
         
     - name: Verify combined updates
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "🔍 Verifying combined playlist updates..."
         
@@ -622,7 +622,7 @@ jobs:
         
     - name: Check if playlist changed
       id: check_changes
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         changes_detected=false
         
@@ -649,7 +649,7 @@ jobs:
         
     - name: Commit and push changes
       if: steps.check_changes.outputs.changes_detected == 'true'
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "💾 Saving combined changes to repository..."
         
@@ -701,7 +701,7 @@ jobs:
         echo "⏰ Next check in 20 minutes"
         
     - name: Cleanup
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "🧹 Cleaning up temporary files..."
         rm -f main_playlist.m3u main_playlist_backup.m3u
