@@ -1,5 +1,4 @@
 name: FANCODE & SONY Json ♻
-
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -20,10 +19,10 @@ jobs:
         token: ${{ secrets.PAT_TOKEN }}
         path: ./workflow-repo
 
-    - name: Checkout playlist repository (buzzinguaecn/playlist)
+    - name: Checkout playlist repository (buzzinguaecn/Pizza)
       uses: actions/checkout@v4
       with:
-        repository: buzzinguaecn/playlist
+        repository: buzzinguaecn/Pizza
         token: ${{ secrets.PAT_TOKEN }}
         path: ./playlist-repo
 
@@ -37,7 +36,7 @@ jobs:
 
     - name: Download and update JSON
       env:
-        JSON_URL: ${{ secrets.FANCODE_JSON }}
+        JSON_URL: ${{ secrets.FANCODE_SIROME }}
       run: |
         import os
         import requests
@@ -79,7 +78,7 @@ jobs:
                 print(f"   🔄 dai-partner → bd-mc-fblive: {url[:60]}...")
                 return new_url
             
-            # 2. https://in কে https://bd তে পরিবর্তন (আগের ফাংশনালিটি)
+            # 2. https://in কে https://bd তে পরিবর্তন (আগের ফাংশানালিটি)
             if "https://in-mc-fblive.fancode.com" in url:
                 new_url = url.replace("https://in-mc-fblive.fancode.com", "https://bd-mc-fblive.fancode.com")
                 print(f"   🔄 in-mc-fblive → bd-mc-fblive: {url[:60]}...")
@@ -129,9 +128,9 @@ jobs:
         # নতুন JSON তৈরি
         updated_data = {
             "name": "Fancode Live Matches Data in Json",
-            "telegram": "https://t.me/askeamiratv",
+            "telegram": "https://contact2.me/lpMKn8",
             "last update time": formatted_time,
-            "webtv": "https://noontv-tv.vercel.app",
+            "webtv": "https://contact2.me/lpMKn8",
             "matches": modified_matches
         }
         
@@ -200,9 +199,9 @@ jobs:
         # নতুন SonyLiv JSON তৈরি (নির্দিষ্ট ফিল্ড বাদ দিয়ে)
         updated_sony_data = {
             "name": "SonyLiv Live Matches Data in Json",
-            "telegram": "https://t.me/askeamiratv",
+            "telegram": "https://contact2.me/lpMKn8",
             "last update time": formatted_time,
-            "webtv": "https://noontv-tv.vercel.app",
+            "webtv": "https://contact2.me/lpMKn8",
             "matches": matches
         }
         
@@ -219,14 +218,14 @@ jobs:
         with open(sony_output_file, 'r', encoding='utf-8') as f:
             content = f.read()
             if "Sonyliv Live Matches Data in Json" in content:
-                print("   ✅ Old name found in content (should not be there!)")
+                print("   ⚠️ Old name found in content (should be updated!)")
             else:
                 print("   ✅ New name 'SonyLiv Live Matches Data in Json' applied")
             
             if "t.me/+rQTz5VL8CRpjNTZl" in content:
                 print("   ⚠️ Old telegram link found!")
             else:
-                print("   ✅ New telegram link 'https://t.me/askeamiratv' applied")
+                print("   ✅ New telegram link 'https://contact2.me/lpMKn8' applied")
       shell: python
 
     - name: Check changes
