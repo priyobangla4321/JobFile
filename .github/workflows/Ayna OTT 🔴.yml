@@ -21,12 +21,12 @@ jobs:
         token: ${{ secrets.PAT_TOKEN }}
         path: ./workflow-repo
         
-    - name: Checkout playlist repository (sirometv/playlist)
+    - name: Checkout playlist repository (buzzinguaecn/Pizza)
       uses: actions/checkout@v4
       with:
-        repository: sirometv/playlist
+        repository: buzzinguaecn/Pizza
         token: ${{ secrets.PAT_TOKEN }}
-        path: ./playlist-repo
+        path: ./Pizza-repo
         
     - name: Setup Bangladesh timezone
       run: |
@@ -47,9 +47,9 @@ jobs:
         
         # সিক্রেট URL চেক করুন
         echo "🔍 Checking secret URL..."
-        SECRET_URL="${{ secrets.SIROMETV_AYNA }}"
+        SECRET_URL="${{ secrets.AYNA }}"
         if [ -z "$SECRET_URL" ]; then
-          echo "❌ Error: SIROMETV_AYNA secret is empty!"
+          echo "❌ Error: AYNA secret is empty!"
           echo "ℹ️ Please check your repository secrets in GitHub Settings"
           exit 1
         fi
@@ -116,14 +116,16 @@ jobs:
           # ফাইনাল ফাইল তৈরি
           FINAL_FILE="Ayna.m3u"
           
-          # হেডার যোগ করুন
+          # হেডার যোগ করুন (পুরানো ২ টা লাইন বাদ দিয়ে নতুন ৪ টা লাইন)
           echo "#EXTM3U" > "$FINAL_FILE"
           echo "# Ayna OTT Playlist" >> "$FINAL_FILE"
           echo "# Total Channels: $CHANNEL_COUNT" >> "$FINAL_FILE"
           echo "# Updated: $BD_TIME" >> "$FINAL_FILE"
           echo "# Local Time: $BD_TIME_READABLE" >> "$FINAL_FILE"
-          echo "# Auto-Update Every 20 Minutes Per Hour" >> "$FINAL_FILE"
-          echo "# Powered By: Sirome TV 🔴 এই ফাইলের সমস্ত লিঙ্ক পাবলিক সোর্স থেকে সংগ্রহ করা হয়েছে। যদি কেউ তাদের সোর্স মুছে ফেলতে চান, তাহলে দয়া করে আমাদের জানান। আমরা আপনার মতামত এবং প্রচেষ্টাকে সম্মান করি, তাই আপনার সোর্স মুছে ফেলার ব্যাপারে আমরা আপত্তি করব না। 🔴 All the links in this file are collected from public sources. If anyone wants to remove their source, please let us know. We respect your opinions and efforts, so we will not object to removing your source." >> "$FINAL_FILE"
+          echo "# 👉 All links included in this file have been collected from publicly available sources. If any content owner wishes to have their source removed, please feel free to contact us. We deeply respect your work and opinions, and we will promptly honor your request without any objection." >> "$FINAL_FILE"
+          echo "# 👉 Please note that neither I nor our team own any of the TV channels listed here. All channels belong to their respective owners. We only collect and share freely available sources so that everyone can enjoy them easily. These streaming links are widely accessible across many platforms on the internet. Our intention is solely for entertainment purposes." >> "$FINAL_FILE"
+          echo "# 👉 If you find any of your content or source in our playlist and would like it to be removed, please feel free to contact us via inbox. We will take immediate action. 👈" >> "$FINAL_FILE"
+          echo "# 👉 Inbox Us: https://contact2.me/lpMKn8 👈" >> "$FINAL_FILE"
           
           # ৫ লাইন গ্যাপ
           for i in {1..5}; do
@@ -148,7 +150,7 @@ jobs:
           
         else
           echo "❌ Error: Failed to download playlist or file is empty"
-          echo "ℹ️ Please check your SIROMETV_AYNA secret URL"
+          echo "ℹ️ Please check your AYNA secret URL"
           exit 1
         fi
         
@@ -157,14 +159,14 @@ jobs:
         echo "📁 Copying playlist to target repository..."
         
         # workflow repo থেকে playlist repo-তে কপি করুন
-        cp ./workflow-repo/Ayna.m3u ./playlist-repo/Ayna.m3u
+        cp ./workflow-repo/Ayna.m3u ./Pizza-repo/Ayna.m3u
         
         echo "✅ Playlist copied successfully"
-        echo "📊 File size in playlist repo: $(wc -l < ./playlist-repo/Ayna.m3u) lines"
+        echo "📊 File size in playlist repo: $(wc -l < ./Pizza-repo/Ayna.m3u) lines"
         
     - name: Check if playlist changed
       id: check_changes
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         changes_detected=false
         
@@ -191,7 +193,7 @@ jobs:
         
     - name: Determine commit message type
       id: commit_type
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         # বাংলাদেশের সময় সংগ্রহ
         COMMIT_TIME_READABLE=$(TZ='Asia/Dhaka' date +'%A, %d %B %Y, %I:%M:%S %p')
@@ -217,7 +219,7 @@ jobs:
         
     - name: Commit and push if changes
       if: steps.check_changes.outputs.changes_detected == 'true'
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
@@ -229,7 +231,7 @@ jobs:
         
         git commit -m "$commit_msg"
         
-        echo "🚀 Pushing changes to playlist repository..."
+        echo "🚀 Pushing changes to playlist repository (buzzinguaecn/Pizza)..."
         git push
         echo "✅ Playlist updated successfully!"
         echo "🕐 Next auto-sync in 20 minutes"
@@ -248,7 +250,7 @@ jobs:
         BD_TIME_READABLE=$(TZ='Asia/Dhaka' date +'%A, %d %B %Y, %I:%M:%S %p Bangladesh Time')
         echo "🏁 Workflow completed at: $BD_TIME_READABLE"
         
-        cd ./playlist-repo
+        cd ./Pizza-repo
         
         if [ -f "Ayna.m3u" ]; then
           LINES_COUNT=$(wc -l < Ayna.m3u)
