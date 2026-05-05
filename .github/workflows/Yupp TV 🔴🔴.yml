@@ -31,6 +31,7 @@ jobs:
     - name: Setup Bangladesh timezone
       run: |
         echo "🌏 Setting up Bangladesh timezone..."
+        # বাংলাদেশের টাইমজোন সেট আপ
         sudo timedatectl set-timezone Asia/Dhaka
         echo "✅ Bangladesh timezone set: $(TZ='Asia/Dhaka' date)"
         
@@ -44,11 +45,12 @@ jobs:
         BD_TIME_READABLE=$(TZ='Asia/Dhaka' date +'%A, %d %B %Y, %I:%M:%S %p Bangladesh Time')
         echo "🕐 Download started at: $BD_TIME_READABLE"
         
-        # সিক্রেট URL চেক করুন
+        # সিক্রেট URL চেক করুন (এবার YUPPTV)
         echo "🔍 Checking secret URL..."
         SECRET_URL="${{ secrets.YUPPTV }}"
         if [ -z "$SECRET_URL" ]; then
           echo "❌ Error: YUPPTV secret is empty!"
+          echo "ℹ️ Please check your repository secrets in GitHub Settings"
           exit 1
         fi
         
@@ -57,104 +59,145 @@ jobs:
         # প্লেলিস্ট ডাউনলোড
         echo "📥 Downloading playlist..."
         curl -s -L -o source_playlist.m3u "$SECRET_URL"
+        CURL_EXIT_CODE=$?
         
-        if [ ! -f "source_playlist.m3u" ] || [ ! -s "source_playlist.m3u" ]; then
-          echo "❌ Error: Failed to download playlist or file is empty"
+        if [ $CURL_EXIT_CODE -ne 0 ]; then
+          echo "❌ Error: Curl failed with exit code $CURL_EXIT_CODE"
+          echo "ℹ️ Trying without silent mode to see error..."
+          curl -L -o source_playlist.m3u "$SECRET_URL"
           exit 1
         fi
         
-        echo "✅ Source playlist downloaded successfully"
-        echo "📊 Original file size: $(wc -l < source_playlist.m3u) lines"
-        
-        # #KODIPROP এবং #EXTVLCOPT লাইন বাদ দিন
-        echo "🔄 Removing #KODIPROP and #EXTVLCOPT lines..."
-        grep -v '^#KODIPROP:' source_playlist.m3u | grep -v '^#EXTVLCOPT:' > temp_filtered.m3u
-        
-        # প্রথম #EXTINF:-1 খুঁজে বের করুন
-        echo "🔍 Finding first #EXTINF:-1 entry..."
-        sed -n '/^#EXTINF:-1/,$p' temp_filtered.m3u > temp_after_first.m3u
-        
-        # PlayZ TV ফিল্টার এবং group-title পরিবর্তন
-        echo "🔄 Filtering PlayZ TV channels and updating group titles..."
-        
-        CHANNEL_COUNT=0
-        > temp_final.m3u
-        
-        while IFS= read -r line; do
-          if [[ "$line" =~ ^#EXTINF:-1 ]]; then
-            # চেক করুন PlayZ বা PlayZ TV আছে কিনা
-            if echo "$line" | grep -qi "PlayZ"; then
-              echo "🚫 Skipping PlayZ TV channel: $line"
-              # পরের লাইন (URL) স্কিপ করার জন্য flag
-              read -r next_line
-              continue
-            else
-              # group-title পরিবর্তন করুন
-              # বিদ্যমান group-title সরান
-              modified_line=$(echo "$line" | sed 's/ group-title="[^"]*"//g')
-              # নতুন group-title যোগ করুন (যদি না থাকে)
-              if [[ ! "$modified_line" =~ group-title= ]]; then
-                modified_line=$(echo "$modified_line" | sed 's/#EXTINF:-1/#EXTINF:-1 group-title="Indian Yupp Channel"/')
-              fi
-              echo "$modified_line" >> temp_final.m3u
-              ((CHANNEL_COUNT++))
+        # ফাইল ডাউনলোড হয়েছে কিনা চেক করুন
+        if [ -f "source_playlist.m3u" ] && [ -s "source_playlist.m3u" ]; then
+          echo "✅ Source playlist downloaded successfully"
+          echo "📊 Original file size: $(wc -l < source_playlist.m3u) lines"
+          
+          # প্রসেস করা প্লেলিস্ট তৈরি
+          TEMP_PROCESSED=$(mktemp)
+          
+          echo "🔄 Processing playlist (removing #KODIPROP and #EXTVLCOPT lines)..."
+          
+          # শুধুমাত্র #EXTINF এবং URL লাইন রাখুন, #KODIPROP এবং #EXTVLCOPT লাইন বাদ দিন
+          while IFS= read -r line; do
+            if [[ ! "$line" =~ ^#KODIPROP: ]] && [[ ! "$line" =~ ^#EXTVLCOPT: ]]; then
+              echo "$line" >> "$TEMP_PROCESSED"
             fi
-          else
-            # URL লাইন বা অন্যান্য লাইন
-            echo "$line" >> temp_final.m3u
-          fi
-        done < temp_after_first.m3u
-        
-        echo "📊 Processing complete:"
-        echo "   - Channels after filtering: $CHANNEL_COUNT"
-        
-        # ফাইনাল ফাইল তৈরি
-        FINAL_FILE="Yupp.m3u"
-        
-        # হেডার যোগ করুন
-        cat > "$FINAL_FILE" << EOF
-#EXTM3U
-# Yupp TV Playlist
-# Total Channels: $CHANNEL_COUNT
-# Updated: $BD_TIME
-# Local Time: $BD_TIME_READABLE
-# Auto-Update Every 20 Minutes Per Hour
-# 👉 Please note that neither I nor our team own any of the TV channels listed here. All channels belong to their respective owners. We only collect and share freely available sources so that everyone can enjoy them easily. These streaming links are widely accessible across many platforms on the internet. Our intention is solely for entertainment purposes.
-#
-# 👉 If you find any of your content or source in our playlist and would like it to be removed, please feel free to contact us via inbox. We will take immediate action. 👈
-#
-# 👉 Inbox Us: https://contact2.me/lpMKn8 👈
-
-EOF
-        
-        # ৫ লাইন গ্যাপ
-        for i in {1..5}; do
-          echo "" >> "$FINAL_FILE"
-        done
-        
-        # প্রসেস করা কন্টেন্ট যোগ করুন
-        cat temp_final.m3u >> "$FINAL_FILE"
-        
-        # ক্লিনআপ
-        rm -f source_playlist.m3u temp_filtered.m3u temp_after_first.m3u temp_final.m3u
-        
-        # ফলাফল দেখান
-        LINES_COUNT=$(wc -l < "$FINAL_FILE")
-        echo "✅ Final playlist created:"
-        echo "   - Total lines: $LINES_COUNT"
-        echo "   - Channel count: $CHANNEL_COUNT"
-        
-        # ভেরিফাই group-title
-        FINAL_CHANNEL_COUNT=$(grep -c 'group-title="Indian Yupp Channel"' "$FINAL_FILE" 2>/dev/null || echo "0")
-        echo "   - Channels with correct group-title: $FINAL_CHANNEL_COUNT"
-        
-        echo "🔍 First 15 lines of final playlist:"
-        head -15 "$FINAL_FILE"
+          done < source_playlist.m3u
+          
+          # এখন প্রথম #EXTINF:-1 খুঁজে বের করুন এবং তার আগের সবকিছু রিমুভ করুন
+          PROCESSED_FILE=$(mktemp)
+          FOUND_FIRST_EXTINF=false
+          
+          echo "🔍 Finding first #EXTINF:-1 entry..."
+          
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^#EXTINF:-1 ]]; then
+              if [ "$FOUND_FIRST_EXTINF" = false ]; then
+                FOUND_FIRST_EXTINF=true
+                echo "✅ Found first #EXTINF:-1 entry"
+                # প্রথম #EXTINF:-1 এর পর থেকে সব লাইন কপি করুন
+                # কিন্তু PlayZ TV বা PlayZ চ্যানেল বাদ দিন
+                if [[ ! "$line" =~ [Pp]lay[Zz] ]] && [[ ! "$line" =~ [Pp]lay[Zz][[:space:]] ]] && [[ ! "$line" =~ [Pp]lay[Zz]TV ]]; then
+                  echo "$line" >> "$PROCESSED_FILE"
+                else
+                  echo "🚫 Skipping PlayZ TV channel: $line"
+                  # PlayZ চ্যানেল স্কিপ করলে পরবর্তী URL লাইনও স্কিপ করতে হবে
+                  SKIP_NEXT_URL=true
+                fi
+              else
+                if [[ ! "$line" =~ [Pp]lay[Zz] ]] && [[ ! "$line" =~ [Pp]lay[Zz][[:space:]] ]] && [[ ! "$line" =~ [Pp]lay[Zz]TV ]]; then
+                  echo "$line" >> "$PROCESSED_FILE"
+                else
+                  echo "🚫 Skipping PlayZ TV channel: $line"
+                  SKIP_NEXT_URL=true
+                fi
+              fi
+            elif [ "$FOUND_FIRST_EXTINF" = true ]; then
+              # যদি আগের লাইনটি PlayZ চ্যানেল ছিল তাহলে এই URL লাইনটি স্কিপ করুন
+              if [ "$SKIP_NEXT_URL" = true ]; then
+                echo "🚫 Skipping URL for PlayZ channel: $line"
+                SKIP_NEXT_URL=false
+              else
+                echo "$line" >> "$PROCESSED_FILE"
+              fi
+            fi
+          done < "$TEMP_PROCESSED"
+          
+          # এখন group-title পরিবর্তন করুন
+          FINAL_PROCESSED=$(mktemp)
+          echo "🔄 Changing group-title to 'Indian Yupp Channel'..."
+          
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^#EXTINF:-1 ]]; then
+              # group-title রিপ্লেস করুন
+              if [[ "$line" =~ group-title=\"[^\"]*\" ]]; then
+                # যদি group-title থাকে তাহলে রিপ্লেস করুন
+                echo "$line" | sed 's/group-title="[^"]*"/group-title="Indian Yupp Channel"/' >> "$FINAL_PROCESSED"
+              else
+                # যদি group-title না থাকে তাহলে যোগ করুন
+                echo "$line" | sed 's/#EXTINF:-1/#EXTINF:-1 group-title="Indian Yupp Channel"/' >> "$FINAL_PROCESSED"
+              fi
+            else
+              echo "$line" >> "$FINAL_PROCESSED"
+            fi
+          done < "$PROCESSED_FILE"
+          
+          # চ্যানেল কাউন্ট করুন
+          CHANNEL_COUNT=$(grep -c "^#EXTINF:-1" "$FINAL_PROCESSED" 2>/dev/null || echo "0")
+          
+          echo "📊 Processing complete:"
+          echo "   - Channels found: $CHANNEL_COUNT"
+          echo "   - Processed file lines: $(wc -l < "$FINAL_PROCESSED")"
+          
+          # ফাইনাল ফাইল তৈরি
+          FINAL_FILE="Yupp.m3u"
+          
+          # হেডার যোগ করুন (পুরনো ডিসক্লেইমার বাদ, নতুন যোগ করুন)
+          echo "#EXTM3U" > "$FINAL_FILE"
+          echo "# Yupp TV Playlist" >> "$FINAL_FILE"
+          echo "# Total Channels: $CHANNEL_COUNT" >> "$FINAL_FILE"
+          echo "# Updated: $BD_TIME" >> "$FINAL_FILE"
+          echo "# Local Time: $BD_TIME_READABLE" >> "$FINAL_FILE"
+          echo "# Auto-Update Every 20 Minutes Per Hour" >> "$FINAL_FILE"
+          echo "# 👉 Please note that neither I nor our team own any of the TV channels listed here. All channels belong to their respective owners. We only collect and share freely available sources so that everyone can enjoy them easily. These streaming links are widely accessible across many platforms on the internet. Our intention is solely for entertainment purposes." >> "$FINAL_FILE"
+          echo "# 👉 If you find any of your content or source in our playlist and would like it to be removed, please feel free to contact us via inbox. We will take immediate action. 👈" >> "$FINAL_FILE"
+          echo "# 👉 Inbox Us: https://contact2.me/lpMKn8 👈" >> "$FINAL_FILE"
+          
+          # ৫ লাইন গ্যাপ
+          for i in {1..5}; do
+            echo "" >> "$FINAL_FILE"
+          done
+          
+          # প্রসেস করা কন্টেন্ট যোগ করুন
+          cat "$FINAL_PROCESSED" >> "$FINAL_FILE"
+          
+          # টেম্পোরারি ফাইল ডিলিট করুন
+          rm -f "$TEMP_PROCESSED" "$PROCESSED_FILE" "$FINAL_PROCESSED" source_playlist.m3u
+          
+          # ফলাফল চেক করুন
+          LINES_COUNT=$(wc -l < "$FINAL_FILE")
+          echo "✅ Final playlist created:"
+          echo "   - Total lines: $LINES_COUNT"
+          echo "   - Channel count: $CHANNEL_COUNT"
+          echo "   - Download time: $BD_TIME"
+          
+          echo "🔍 First 20 lines of final playlist:"
+          head -20 "$FINAL_FILE"
+          
+        else
+          echo "❌ Error: Failed to download playlist or file is empty"
+          echo "ℹ️ Please check your YUPPTV secret URL"
+          exit 1
+        fi
         
     - name: Copy playlist to playlist repository
       run: |
         echo "📁 Copying playlist to target repository..."
+        
+        # workflow repo থেকে playlist repo-তে কপি করুন
         cp ./workflow-repo/Yupp.m3u ./Pizza-repo/Yupp.m3u
+        
         echo "✅ Playlist copied successfully"
         echo "📊 File size in playlist repo: $(wc -l < ./Pizza-repo/Yupp.m3u) lines"
         
@@ -167,9 +210,13 @@ EOF
         echo "🔍 Checking for changes in playlist..."
         
         if [ -f "Yupp.m3u" ] && [ -s "Yupp.m3u" ]; then
+          # ফাইল এক্সিস্ট করলে changes চেক করুন
           if ! git diff --quiet Yupp.m3u; then
             changes_detected=true
             echo "🔄 Changes detected in Yupp.m3u"
+            
+            # পরিবর্তনের বিস্তারিত দেখান
+            echo "📊 Changes summary:"
             git diff --stat Yupp.m3u
           else
             echo "✅ No content changes detected"
@@ -185,16 +232,23 @@ EOF
       id: commit_type
       working-directory: ./Pizza-repo
       run: |
+        # বাংলাদেশের সময় সংগ্রহ
         COMMIT_TIME_READABLE=$(TZ='Asia/Dhaka' date +'%A, %d %B %Y, %I:%M:%S %p')
         
+        # রিপোজিটরি খালি কিনা চেক (প্রথম রান)
         if [ ! -f "Yupp.m3u" ] || [ ! -s "Yupp.m3u" ]; then
+          echo "📝 First run or empty repository"
           echo "commit_type=first" >> $GITHUB_OUTPUT
           echo "commit_msg=🆗 Yupp TV : 🆕 Start Done ✅ - at $COMMIT_TIME_READABLE" >> $GITHUB_OUTPUT
         else
+          # শুধু ম্যানুয়াল ট্রিগার চেক
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "🔄 Manual trigger detected"
             echo "commit_type=manual" >> $GITHUB_OUTPUT
             echo "commit_msg=🆗 Yupp TV : 🆕 Start Done ✅ - at $COMMIT_TIME_READABLE" >> $GITHUB_OUTPUT
+          # স্কিডিউলড আপডেট
           else
+            echo "⏰ Scheduled update detected"
             echo "commit_type=scheduled" >> $GITHUB_OUTPUT
             echo "commit_msg=🆗 Yupp TV : 🔄 Updated Done ✅ - at $COMMIT_TIME_READABLE" >> $GITHUB_OUTPUT
           fi
@@ -208,10 +262,13 @@ EOF
         git config --local user.name "github-actions[bot]"
         git add Yupp.m3u
         
+        # নির্ধারিত commit message ব্যবহার করুন
         commit_msg="${{ steps.commit_type.outputs.commit_msg }}"
         echo "📝 Commit message: $commit_msg"
         
         git commit -m "$commit_msg"
+        
+        echo "🚀 Pushing changes to playlist repository..."
         git push
         echo "✅ Playlist updated successfully!"
         echo "🕐 Next auto-sync in 20 minutes"
@@ -222,6 +279,7 @@ EOF
         BD_TIME_READABLE=$(TZ='Asia/Dhaka' date +'%A, %d %B %Y, %I:%M:%S %p Bangladesh Time')
         echo "✅ No changes detected in playlist"
         echo "🕐 Last checked: $BD_TIME_READABLE"
+        echo "⏰ Next check in 20 minutes"
         
     - name: Cleanup and final report
       if: always()
@@ -233,11 +291,14 @@ EOF
         
         if [ -f "Yupp.m3u" ]; then
           LINES_COUNT=$(wc -l < Yupp.m3u)
-          CHANNEL_COUNT=$(grep -c 'group-title="Indian Yupp Channel"' Yupp.m3u 2>/dev/null || echo "0")
+          CHANNEL_COUNT=$(grep -c "^#EXTINF:-1" Yupp.m3u 2>/dev/null || echo "0")
           echo "📊 Final playlist status:"
           echo "   - Total lines: $LINES_COUNT"
           echo "   - Channel count: $CHANNEL_COUNT"
           echo "   - File size: $(wc -c < Yupp.m3u) bytes"
+          echo "📝 Last commit info:"
           git log -1 --oneline
+        else
+          echo "❌ No playlist file found in repository"
         fi
         echo "✅ Yupp TV sync process finished!"
