@@ -16,7 +16,7 @@ jobs:
         with:
           repository: buzzinguaecn/Pizza
           token: ${{ secrets.PAT_TOKEN }}
-          path: ./playlist-repo
+          path: ./Pizza-repo
           fetch-depth: 0
 
       - name: Set up Python
@@ -29,9 +29,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests pytz
 
-      - name: Update BD, IND and SonyLiv playlists
+      - name: Update BD, IND and SonyLiv s
         run: |
-          cd playlist-repo
+          cd Pizza-repo
           cat > update_playlists.py << 'EOF'
           import json
           import requests
@@ -264,7 +264,7 @@ jobs:
       - name: Check changes in playlist repo
         run: |
           echo "🔍 Checking changes in playlist repository..."
-          cd playlist-repo
+          cd Pizza-repo
           git status
           echo ""
           echo "📊 File diffs:"
@@ -278,7 +278,7 @@ jobs:
         run: |
           echo "💾 Committing changes to playlist repository..."
           
-          cd playlist-repo
+          cd Pizza-repo
           
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
@@ -314,4 +314,4 @@ jobs:
       - name: Clean up
         run: |
           echo "🧹 Cleaning up temporary files..."
-          rm -rf playlist-repo
+          rm -rf Pizza-repo
