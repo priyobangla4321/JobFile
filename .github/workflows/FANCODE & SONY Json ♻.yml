@@ -64,31 +64,60 @@ jobs:
             print(f"❌ Download failed: {e}")
             exit(1)
         
+        def clean_title(title):
+            """টাইটেল থেকে কমা বাদ দেয়ার ফাংশন"""
+            if not isinstance(title, str):
+                return title
+            
+            # রেগুলার এক্সপ্রেশন: বন্ধনীর ভিতরে থাকা কমা বাদ দিবে
+            # যেমন: (Super Cola National T20 Cup, 2026) → (Super Cola National T20 Cup 2026)
+            pattern = r'\(([^)]+)\)'
+            
+            def remove_comma_in_parenthesis(match):
+                inner_text = match.group(1)
+                # কমা বাদ দিয়ে স্পেস যোগ করা
+                cleaned_inner = re.sub(r',\s*', ' ', inner_text)
+                return f'({cleaned_inner})'
+            
+            cleaned_title = re.sub(pattern, remove_comma_in_parenthesis, title)
+            
+            if cleaned_title != title:
+                print(f"   🔄 Title cleaned: {title[:50]}... → {cleaned_title[:50]}...")
+            
+            return cleaned_title
+        
         def replace_url(url):
             """URL প্রতিস্থাপন ফাংশন"""
             if not isinstance(url, str):
                 return url
             
-            # 1. প্রথমে fdlive → fblive পরিবর্তন (নতুন ফাংশান)
-            if "fdlive" in url:
-                old_url = url
-                new_url = url.replace("fdlive", "fblive")
-                print(f"   🔄 fdlive → fblive: {old_url[:60]}...")
-                return new_url
+            original_url = url
             
-            # 2. dai-partner.fancode.com/primary/ → bd-mc-fblive.fancode.com/mumbai/
+            # 1. fdlive → fblive পরিবর্তন
+            if "fdlive" in url:
+                url = url.replace("fdlive", "fblive")
+                print(f"   🔄 fdlive → fblive")
+            
+            # 2. in-mc → bd-mc পরিবর্তন
+            if "in-mc" in url:
+                url = url.replace("in-mc", "bd-mc")
+                print(f"   🔄 in-mc → bd-mc")
+            
+            # 3. dai-partner.fancode.com/primary/ → bd-mc-fblive.fancode.com/mumbai/
             if "https://dai-partner.fancode.com/primary/" in url:
                 old_prefix = "https://dai-partner.fancode.com/primary/"
                 remaining = url.replace(old_prefix, "")
-                new_url = "https://bd-mc-fblive.fancode.com/mumbai/" + remaining
-                print(f"   🔄 dai-partner → bd-mc-fblive: {url[:60]}...")
-                return new_url
+                url = "https://bd-mc-fblive.fancode.com/mumbai/" + remaining
+                print(f"   🔄 dai-partner → bd-mc-fblive")
             
-            # 3. https://in-mc-fblive.fancode.com → https://bd-mc-fblive.fancode.com
+            # 4. in-mc-fblive → bd-mc-fblive (যদি আগে না হয়ে থাকে)
             if "https://in-mc-fblive.fancode.com" in url:
-                new_url = url.replace("https://in-mc-fblive.fancode.com", "https://bd-mc-fblive.fancode.com")
-                print(f"   🔄 in-mc-fblive → bd-mc-fblive: {url[:60]}...")
-                return new_url
+                url = url.replace("https://in-mc-fblive.fancode.com", "https://bd-mc-fblive.fancode.com")
+                print(f"   🔄 in-mc-fblive → bd-mc-fblive")
+            
+            if url != original_url:
+                print(f"      Old: {original_url[:80]}...")
+                print(f"      New: {url[:80]}...")
             
             return url
         
@@ -100,9 +129,20 @@ jobs:
         adfree_replaced = 0
         dai_replaced = 0
         fdlive_replaced = 0
+        in_mc_replaced = 0
+        title_cleaned = 0
         
         for match in matches:
             if isinstance(match, dict):
+                # টাইটেল ক্লিন করা
+                if "title" in match:
+                    old_title = match.get("title", "")
+                    if old_title:
+                        new_title = clean_title(old_title)
+                        if new_title != old_title:
+                            match["title"] = new_title
+                            title_cleaned += 1
+                
                 # adfree_url ফিল্ড পরিবর্তন
                 if "adfree_url" in match:
                     old_url = match.get("adfree_url", "")
@@ -113,6 +153,8 @@ jobs:
                             adfree_replaced += 1
                             if "fdlive" in old_url:
                                 fdlive_replaced += 1
+                            if "in-mc" in old_url:
+                                in_mc_replaced += 1
                 
                 # dai_url ফিল্ড পরিবর্তন
                 if "dai_url" in match:
@@ -124,6 +166,8 @@ jobs:
                             dai_replaced += 1
                             if "fdlive" in old_url:
                                 fdlive_replaced += 1
+                            if "in-mc" in old_url:
+                                in_mc_replaced += 1
             
             modified_matches.append(match)
         
@@ -131,6 +175,8 @@ jobs:
         print(f"   - adfree_url replaced: {adfree_replaced}")
         print(f"   - dai_url replaced: {dai_replaced}")
         print(f"   - fdlive → fblive replaced: {fdlive_replaced}")
+        print(f"   - in-mc → bd-mc replaced: {in_mc_replaced}")
+        print(f"   - Titles cleaned (commas removed): {title_cleaned}")
         
         # বাংলাদেশ টাইমজোন
         bd_timezone = pytz.timezone('Asia/Dhaka')
@@ -154,20 +200,31 @@ jobs:
         print(f"\n✅ JSON updated successfully at {formatted_time}")
         
         # ভেরিফিকেশন
-        print("\n🔍 Verification - checking for 'fdlive' URLs:")
+        print("\n🔍 Verification:")
         with open(output_file, 'r', encoding='utf-8') as f:
             content = f.read()
+            
+            # fdlive চেক
             if "fdlive" in content:
                 print("   ⚠️ WARNING: Still found 'fdlive' in file!")
-                lines = content.split('\n')
-                for i, line in enumerate(lines):
-                    if 'fdlive' in line:
-                        print(f"      Line {i+1}: {line.strip()[:100]}")
             else:
                 print("   ✅ No 'fdlive' found - replacement successful!")
             
-            if "bd-mc-fblive.fancode.com/mumbai" in content:
-                print("   ✅ New URL pattern 'bd-mc-fblive.fancode.com/mumbai' found in file")
+            # in-mc চেক
+            if "in-mc" in content:
+                print("   ⚠️ WARNING: Still found 'in-mc' in file!")
+            else:
+                print("   ✅ No 'in-mc' found - replacement successful!")
+            
+            # কমা চেক (টাইটেলের ভিতরে)
+            comma_pattern = r'"title":\s*"[^"]*\([^)]*,[^)]*\)[^"]*"'
+            if re.search(comma_pattern, content):
+                print("   ⚠️ WARNING: Commas still found inside titles!")
+            else:
+                print("   ✅ No commas found inside titles - cleaning successful!")
+            
+            if "bd-mc" in content:
+                print("   ✅ 'bd-mc' pattern found in file")
       shell: python
 
     - name: Update SonyLiv JSON
@@ -251,12 +308,30 @@ jobs:
           echo "❌ ERROR: 'fdlive' still exists!"
           exit 1
         else
-          echo "✅ No 'fdlive' found - replacement successful"
+          echo "✅ No 'fdlive' found"
         fi
         
         echo ""
-        echo "📊 Checking for 'fblive' in Fancode.json:"
-        grep -n "fblive" Fancode.json | head -5 || echo "No fblive URLs found (may be normal if no stream links exist)"
+        echo "📊 Checking for 'in-mc' in Fancode.json:"
+        if grep -n "in-mc" Fancode.json; then
+          echo "❌ ERROR: 'in-mc' still exists!"
+          exit 1
+        else
+          echo "✅ No 'in-mc' found"
+        fi
+        
+        echo ""
+        echo "📊 Checking for commas inside titles in Fancode.json:"
+        if grep -E '"title":.*\(.*,.*\)' Fancode.json; then
+          echo "❌ ERROR: Commas still found inside titles!"
+          exit 1
+        else
+          echo "✅ No commas found inside titles"
+        fi
+        
+        echo ""
+        echo "📊 Checking for 'bd-mc' in Fancode.json:"
+        grep -n "bd-mc" Fancode.json | head -5 || echo "No bd-mc URLs found"
         
         echo ""
         echo "📊 SonyLiv.json content check:"
