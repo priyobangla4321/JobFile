@@ -208,7 +208,7 @@ jobs:
             for new_link in new_links:
                 new_block += new_link + "\n"
             
-            # বিদ্যমান URL ব্লক যোগ করা (gh-pages/Pizza-Sports.m3u এর লিংকগুলি পরে/নিচে)
+            # বিদ্যমান URL ব্লক যোগ করা (gh-pages/Sports-All.m3u এর লিংকগুলি পরে/নিচে)
             new_block += existing_urls_block
             
             # মেইন কন্টেন্টে রিপ্লেস করা
@@ -495,7 +495,7 @@ jobs:
         updated_content, total_added_channels = force_groups_at_line(main_content, all_group_channels, TARGET_LINE_NUMBER)
         
         # আপডেট করা কন্টেন্ট ফাইনাল ফাইলে সেভ করুন
-        with open('Pizza-Sports_updated.m3u', 'w', encoding='utf-8') as f:
+        with open('Sports-All_updated.m3u', 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
         print(f"\n🎉 Live Fancode 🔄 Update Summary:")
@@ -545,14 +545,14 @@ jobs:
       run: |
         echo "🔍 Verifying combined playlist updates..."
         
-        if [ ! -f "Pizza-Sports_updated.m3u" ] || [ ! -s "Pizza-Sports_updated.m3u" ]; then
+        if [ ! -f "Sports-All_updated.m3u" ] || [ ! -s "Sports-All_updated.m3u" ]; then
           echo "❌ ERROR: Updated playlist is missing or empty!"
           exit 1
         fi
         
         # Compare with backup
         OLD_LINES=$(wc -l < main_playlist_backup.m3u)
-        NEW_LINES=$(wc -l < Pizza-Sports_updated.m3u)
+        NEW_LINES=$(wc -l < Sports-All_updated.m3u)
         DIFF=$((NEW_LINES - OLD_LINES))
         
         echo "📊 Line count comparison:"
@@ -562,18 +562,18 @@ jobs:
         
         # Check All Channel updates
         echo "🔍 Checking All Channel 🔄 updates:"
-        ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" Pizza-Sports_updated.m3u || echo "0")
-        ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" Pizza-Sports_updated.m3u || echo "0")
+        ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" Sports-All_updated.m3u || echo "0")
+        ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" Sports-All_updated.m3u || echo "0")
         echo "   ✅ All Channel updates: $ALL_CHANNEL_UPDATES channels"
         echo "   ⛔ All Channel skips: $ALL_CHANNEL_SKIPS channels"
         
         # Count total links for a sample channel
-        T_SPORTS_LINKS=$(grep -A 10 "T Sports" Pizza-Sports_updated.m3u | grep -c "^http" || echo "0")
+        T_SPORTS_LINKS=$(grep -A 10 "T Sports" Sports-All_updated.m3u | grep -c "^http" || echo "0")
         echo "   📊 Sample - T Sports has $T_SPORTS_LINKS links"
         
         # Check order for T Sports - verify Ayna links are on top
         echo "🔍 Checking T Sports link order (Ayna links should be on top):"
-        T_SPORTS_SECTION=$(grep -A 20 "T Sports" Pizza-Sports_updated.m3u | head -15)
+        T_SPORTS_SECTION=$(grep -A 20 "T Sports" Sports-All_updated.m3u | head -15)
         T_SPORTS_FIRST_FEW_LINKS=$(echo "$T_SPORTS_SECTION" | grep "^http" | head -3)
         echo "   First few links for T Sports:"
         echo "$T_SPORTS_FIRST_FEW_LINKS" | while read line; do
@@ -592,23 +592,23 @@ jobs:
         
         # Check Live Fancode updates
         echo "🔍 Checking Live Fancode 🔄 updates:"
-        MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - 🔴Live Now🔴" Pizza-Sports_updated.m3u || echo "0")
+        MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - 🔴Live Now🔴" Sports-All_updated.m3u || echo "0")
         echo "   Multiple Groups section: $MULTIPLE_GROUPS_SECTION"
         
         if [ "$MULTIPLE_GROUPS_SECTION" -eq "0" ]; then
             echo "⚠️ Warning: No Multiple Groups section found"
         else
             # Check section position
-            SECTION_LINE=$(grep -n "#AUTO-UPDATED - Multiple Groups" Pizza-Sports_updated.m3u | cut -d: -f1)
+            SECTION_LINE=$(grep -n "#AUTO-UPDATED - Multiple Groups" Sports-All_updated.m3u | cut -d: -f1)
             echo "   📍 Multiple Groups section at line: $SECTION_LINE"
         fi
         
         # Check for Live Event group
-        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' Pizza-Sports_updated.m3u || echo "0")
+        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' Sports-All_updated.m3u || echo "0")
         echo "   📺 Live Event channels: $LIVE_EVENT_COUNT"
         
         # Verify no "No channels found" lines
-        if grep -q "No channels found" Pizza-Sports_updated.m3u; then
+        if grep -q "No channels found" Sports-All_updated.m3u; then
             echo "❌ ERROR: 'No channels found' line still exists!"
             exit 1
         else
@@ -616,7 +616,7 @@ jobs:
         fi
         
         # Move final file to main playlist
-        mv Pizza-Sports_updated.m3u Pizza-Sports.m3u
+        mv Sports-All_updated.m3u Sports-All.m3u
         
         echo "✅ Combined verification completed!"
         
@@ -628,21 +628,21 @@ jobs:
         
         echo "🔍 Checking for changes in playlist..."
         
-        if [ -f "Pizza-Sports.m3u" ] && [ -s "Pizza-Sports.m3u" ]; then
+        if [ -f "Sports-All.m3u" ] && [ -s "Sports-All.m3u" ]; then
           # ফাইল এক্সিস্ট করলে changes চেক করুন
-          if ! git diff --quiet Pizza-Sports.m3u; then
+          if ! git diff --quiet Sports-All.m3u; then
             changes_detected=true
-            echo "🔄 Changes detected in Pizza-Sports.m3u"
+            echo "🔄 Changes detected in Sports-All.m3u"
             
             # পরিবর্তনের বিস্তারিত দেখান
             echo "📊 Changes summary:"
-            git diff --stat Pizza-Sports.m3u
+            git diff --stat Sports-All.m3u
           else
             echo "✅ No content changes detected"
           fi
         else
           changes_detected=true
-          echo "📝 New Pizza-Sports.m3u file will be created"
+          echo "📝 New Sports-All.m3u file will be created"
         fi
         
         echo "changes_detected=$changes_detected" >> $GITHUB_OUTPUT
@@ -655,18 +655,18 @@ jobs:
         
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add Pizza-Sports.m3u
+        git add Sports-All.m3u
         
         # বাংলাদেশের সময় নেওয়া (BD Time format)
         BANGLADESH_TIME=$(TZ='Asia/Dhaka' date +'%Y-%m-%d %I:%M:%S%p BD Time')
         
         # Calculate channel counts
-        ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" Pizza-Sports.m3u || echo "0")
-        ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" Pizza-Sports.m3u || echo "0")
-        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' Pizza-Sports.m3u || echo "0")
+        ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" Sports-All.m3u || echo "0")
+        ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" Sports-All.m3u || echo "0")
+        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' Sports-All.m3u || echo "0")
         
         # প্রথম রানের জন্য বিশেষ commit message
-        if [ ! -f "Pizza-Sports.m3u" ] || [ ! -s "Pizza-Sports.m3u" ]; then
+        if [ ! -f "Sports-All.m3u" ] || [ ! -s "Sports-All.m3u" ]; then
           # ফাইল না থাকলে বা খালি থাকলে প্রথম রান হিসেবে বিবেচনা করা হবে
           COMMIT_MESSAGE="🆗 Pizza TV Sports : 🆕 Start 🆕 - "
           COMMIT_MESSAGE+="All Channel ($ALL_CHANNEL_UPDATES updates, $ALL_CHANNEL_SKIPS skips) + Live Event ($LIVE_EVENT_COUNT channels) - $BANGLADESH_TIME"
