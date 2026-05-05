@@ -1,4 +1,4 @@
-name: Popular TV 🟢🔴
+name: All-TV 🟢🔴
 
 on:
   schedule:
@@ -18,11 +18,11 @@ jobs:
       with:
         token: ${{ secrets.PAT_TOKEN }}
         repository: buzzinguaecn/Pizza
-        path: playlist-repo
+        path: Pizza-repo
         fetch-depth: 0
         
     - name: Download all playlists
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "📥 Downloading all required playlists..."
         
@@ -30,7 +30,7 @@ jobs:
         echo "" > main_playlist.m3u
         
         # Source playlists
-        curl -s -L -o source_playlist.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/gh-pages/PopularTV.m3u"
+        curl -s -L -o source_playlist.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/gh-pages/All-TV.m3u"
         curl -s -L -o ayna_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/Ayna.m3u"
         curl -s -L -o fancode_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/fancodeBD.m3u"
         curl -s -L -o sonyliv_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/SonyLiv.m3u"
@@ -46,7 +46,7 @@ jobs:
         done
         
     - name: Copy from source to main playlist
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "📋 Copying from source playlist to main playlist..."
         
@@ -63,13 +63,13 @@ jobs:
         echo "✅ Main playlist now has $LINES lines"
         
     - name: Backup original playlist
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
-        cp main_playlist.m3u PopularTV_backup.m3u
+        cp main_playlist.m3u All-TV_backup.m3u
         echo "📦 Original playlist backed up"
         
     - name: Update All Channel 🔄
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "🔄 Starting All Channel 🔄 update..."
         
@@ -269,7 +269,7 @@ jobs:
             for new_link in new_links:
                 new_block += new_link + "\n"
             
-            # বিদ্যমান URL ব্লক যোগ করা (gh-pages/PopularTV.m3u এর লিংকগুলি পরে/নিচে)
+            # বিদ্যমান URL ব্লক যোগ করা (gh-pages/All-TV.m3u এর লিংকগুলি পরে/নিচে)
             new_block += existing_urls_block
             
             # মেইন কন্টেন্টে রিপ্লেস করা
@@ -340,7 +340,7 @@ jobs:
                 print(f"❌ No links found for {main_channel} in Ayna playlist")
         
         # আপডেট করা কন্টেন্ট temporary ফাইলে সেভ করুন
-        with open('PopularTV_updated.m3u', 'w', encoding='utf-8') as f:
+        with open('All-TV_updated.m3u', 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
         print(f"\n🎉 All Channel 🔄 Update Summary:")
@@ -356,7 +356,7 @@ jobs:
         echo "✅ All Channel 🔄 update completed!"
         
     - name: Update Live Fancode 🔄
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "🔄 Starting Live Fancode 🔄 update..."
         
@@ -439,7 +439,7 @@ jobs:
             timestamp = get_bangladesh_time()
             
             # সব গ্রুপের জন্য combined section তৈরি করা
-            new_combined_section = f"#✅Popular TV - 🟢 Groups UPDATED - 🟢 - {timestamp}\n"
+            new_combined_section = f"#✅ All-TV - 🟢 Groups UPDATED - 🟢 - {timestamp}\n"
             
             total_channels = 0
             has_any_channels = False
@@ -514,7 +514,7 @@ jobs:
             return updated_content, total_channels
         
         # All Channel update এর পরের temporary ফাইল লোড করুন
-        with open('PopularTV_updated.m3u', 'r', encoding='utf-8') as f:
+        with open('All-TV_updated.m3u', 'r', encoding='utf-8') as f:
             main_content = f.read()
         
         # Check if manual run or scheduled
@@ -557,7 +557,7 @@ jobs:
         updated_content, total_added_channels = force_groups_at_line(main_content, all_group_channels, TARGET_LINE_NUMBER)
         
         # আপডেট করা কন্টেন্ট ফাইনাল ফাইলে সেভ করুন
-        with open('PopularTV_updated_final.m3u', 'w', encoding='utf-8') as f:
+        with open('All-TV_updated_final.m3u', 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
         print(f"\n🎉 Live Fancode 🔄 Update Summary:")
@@ -603,7 +603,7 @@ jobs:
         echo "✅ Live Fancode 🔄 update completed!"
         
     - name: Update Live SonyLiv 🔄
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "🔄 Starting Live SonyLiv 🔄 update..."
         
@@ -686,7 +686,7 @@ jobs:
             timestamp = get_bangladesh_time()
             
             # সব গ্রুপের জন্য combined section তৈরি করা
-            new_combined_section = f"#✅ Popular TV - 🟢 SonyLiv Groups UPDATED - 🟢 - {timestamp}\n"
+            new_combined_section = f"#✅ All-TV - 🟢 SonyLiv Groups UPDATED - 🟢 - {timestamp}\n"
             
             total_channels = 0
             has_any_channels = False
@@ -761,7 +761,7 @@ jobs:
             return updated_content, total_channels
         
         # All Channel update এর পরের temporary ফাইল লোড করুন
-        with open('PopularTV_updated_final.m3u', 'r', encoding='utf-8') as f:
+        with open('All-TV_updated_final.m3u', 'r', encoding='utf-8') as f:
             main_content = f.read()
         
         # Check if manual run or scheduled
@@ -804,7 +804,7 @@ jobs:
         updated_content, total_added_channels = force_groups_at_line(main_content, all_group_channels, TARGET_LINE_NUMBER)
         
         # আপডেট করা কন্টেন্ট ফাইনাল ফাইলে সেভ করুন
-        with open('PopularTV_updated_final.m3u', 'w', encoding='utf-8') as f:
+        with open('All-TV_updated_final.m3u', 'w', encoding='utf-8') as f:
             f.write(updated_content)
         
         print(f"\n🎉 Live SonyLiv 🔄 Update Summary:")
@@ -850,18 +850,18 @@ jobs:
         echo "✅ Live SonyLiv 🔄 update completed!"
         
     - name: Verify combined updates
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "🔍 Verifying combined playlist updates..."
         
-        if [ ! -f "PopularTV_updated_final.m3u" ] || [ ! -s "PopularTV_updated_final.m3u" ]; then
+        if [ ! -f "All-TV_updated_final.m3u" ] || [ ! -s "All-TV_updated_final.m3u" ]; then
           echo "❌ ERROR: Updated playlist is missing or empty!"
           exit 1
         fi
         
         # Compare with backup
-        OLD_LINES=$(wc -l < PopularTV_backup.m3u)
-        NEW_LINES=$(wc -l < PopularTV_updated_final.m3u)
+        OLD_LINES=$(wc -l < All-TV_backup.m3u)
+        NEW_LINES=$(wc -l < All-TV_updated_final.m3u)
         DIFF=$((NEW_LINES - OLD_LINES))
         
         echo "📊 Line count comparison:"
@@ -871,18 +871,18 @@ jobs:
         
         # Check All Channel updates
         echo "🔍 Checking All Channel 🔄 updates:"
-        ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" PopularTV_updated_final.m3u || echo "0")
-        ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" PopularTV_updated_final.m3u || echo "0")
+        ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" All-TV_updated_final.m3u || echo "0")
+        ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" All-TV_updated_final.m3u || echo "0")
         echo "   ✅ All Channel updates: $ALL_CHANNEL_UPDATES channels"
         echo "   ⛔ All Channel skips: $ALL_CHANNEL_SKIPS channels"
         
         # Count total links for a sample channel
-        JAMUNA_LINKS=$(grep -A 10 "Jamuna TV" PopularTV_updated_final.m3u | grep -c "^http" || echo "0")
+        JAMUNA_LINKS=$(grep -A 10 "Jamuna TV" All-TV_updated_final.m3u | grep -c "^http" || echo "0")
         echo "   📊 Sample - Jamuna TV has $JAMUNA_LINKS links"
         
         # Check order for Jamuna TV - verify Ayna links are on top
         echo "🔍 Checking Jamuna TV link order (Ayna links should be on top):"
-        JAMUNA_SECTION=$(grep -A 20 "Jamuna TV" PopularTV_updated_final.m3u | head -15)
+        JAMUNA_SECTION=$(grep -A 20 "Jamuna TV" All-TV_updated_final.m3u | head -15)
         JAMUNA_FIRST_FEW_LINKS=$(echo "$JAMUNA_SECTION" | grep "^http" | head -3)
         echo "   First few links for Jamuna TV:"
         echo "$JAMUNA_FIRST_FEW_LINKS" | while read line; do
@@ -901,36 +901,36 @@ jobs:
         
         # Check Live Fancode updates
         echo "🔍 Checking Live Fancode 🔄 updates:"
-        MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - Multiple Groups" PopularTV_updated_final.m3u || echo "0")
+        MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - Multiple Groups" All-TV_updated_final.m3u || echo "0")
         echo "   Multiple Groups section: $MULTIPLE_GROUPS_SECTION"
         
         if [ "$MULTIPLE_GROUPS_SECTION" -eq "0" ]; then
             echo "⚠️ Warning: No Multiple Groups section found"
         else
             # Check section position
-            SECTION_LINE=$(grep -n "#AUTO-UPDATED - Multiple Groups" PopularTV_updated_final.m3u | cut -d: -f1)
+            SECTION_LINE=$(grep -n "#AUTO-UPDATED - Multiple Groups" All-TV_updated_final.m3u | cut -d: -f1)
             echo "   📍 Multiple Groups section at line: $SECTION_LINE"
         fi
         
         # Check Live SonyLiv updates
         echo "🔍 Checking Live SonyLiv 🔄 updates:"
-        SONY_MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - SonyLiv Groups" PopularTV_updated_final.m3u || echo "0")
+        SONY_MULTIPLE_GROUPS_SECTION=$(grep -c "#AUTO-UPDATED - SonyLiv Groups" All-TV_updated_final.m3u || echo "0")
         echo "   SonyLiv Multiple Groups section: $SONY_MULTIPLE_GROUPS_SECTION"
         
         if [ "$SONY_MULTIPLE_GROUPS_SECTION" -eq "0" ]; then
             echo "⚠️ Warning: No SonyLiv Multiple Groups section found"
         else
             # Check section position
-            SONY_SECTION_LINE=$(grep -n "#AUTO-UPDATED - SonyLiv Groups" PopularTV_updated_final.m3u | cut -d: -f1)
+            SONY_SECTION_LINE=$(grep -n "#AUTO-UPDATED - SonyLiv Groups" All-TV_updated_final.m3u | cut -d: -f1)
             echo "   📍 SonyLiv Multiple Groups section at line: $SONY_SECTION_LINE"
         fi
         
         # Check for Live Event group
-        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' PopularTV_updated_final.m3u || echo "0")
+        LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' All-TV_updated_final.m3u || echo "0")
         echo "   📺 Live Event channels: $LIVE_EVENT_COUNT"
         
         # Verify no 🔴Live Now🔴 in Live Event group
-        LIVE_NOW_COUNT=$(grep -c '🔴Live Now🔴' PopularTV_updated_final.m3u || echo "0")
+        LIVE_NOW_COUNT=$(grep -c '🔴Live Now🔴' All-TV_updated_final.m3u || echo "0")
         if [ "$LIVE_NOW_COUNT" -gt "0" ]; then
             echo "⚠️ Warning: Found $LIVE_NOW_COUNT instances of '🔴Live Now🔴'"
         else
@@ -938,7 +938,7 @@ jobs:
         fi
         
         # Verify no "No channels found" lines
-        if grep -q "No channels found" PopularTV_updated_final.m3u; then
+        if grep -q "No channels found" All-TV_updated_final.m3u; then
             echo "❌ ERROR: 'No channels found' line still exists!"
             exit 1
         else
@@ -946,18 +946,18 @@ jobs:
         fi
         
         # Move final file to main playlist
-        mv PopularTV_updated_final.m3u PopularTV.m3u
+        mv All-TV_updated_final.m3u All-TV.m3u
         
         echo "✅ Combined verification completed!"
         
     - name: Commit and push changes to buzzinguaecn/Pizza
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "💾 Saving combined changes to repository..."
         
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add PopularTV.m3u
+        git add All-TV.m3u
         
         if git diff --staged --quiet; then
           echo "✅ No changes detected - playlist is up to date"
@@ -966,27 +966,27 @@ jobs:
           BANGLADESH_TIME=$(TZ='Asia/Dhaka' date +'%Y-%m-%d %I:%M:%S%p BD Time')
           
           # Calculate channel counts
-          ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" PopularTV.m3u || echo "0")
-          ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" PopularTV.m3u || echo "0")
-          LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' PopularTV.m3u || echo "0")
-          SONY_LIVE_EVENT_COUNT=$(grep -c '# --- Live Event Group ---' PopularTV.m3u || echo "0")
+          ALL_CHANNEL_UPDATES=$(grep -c "#AUTO-UPDATED -.*✅-" All-TV.m3u || echo "0")
+          ALL_CHANNEL_SKIPS=$(grep -c "#AUTO-UPDATED -.*⛔ SKIPPED ⛔" All-TV.m3u || echo "0")
+          LIVE_EVENT_COUNT=$(grep -c 'group-title="Live Event"' All-TV.m3u || echo "0")
+          SONY_LIVE_EVENT_COUNT=$(grep -c '# --- Live Event Group ---' All-TV.m3u || echo "0")
           
           # প্রথম রানের জন্য বিশেষ commit message
           # Check if this is the first run by looking at git history
           FIRST_RUN=false
-          if ! git log --oneline -n 1 --grep="🆗 Popular TV" >/dev/null 2>&1; then
+          if ! git log --oneline -n 1 --grep="🆗 All-TV" >/dev/null 2>&1; then
             FIRST_RUN=true
           fi
           
           if [ "$FIRST_RUN" = true ]; then
             # প্রথম রানের জন্য
-            COMMIT_MESSAGE="🆗 Popular TV : 🆕 Start 🆕 - "
+            COMMIT_MESSAGE="🆗 All-TV : 🆕 Start 🆕 - "
           elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             # Manual run
-            COMMIT_MESSAGE="🆗 Popular TV : 🆕 Start Done ✅ - "
+            COMMIT_MESSAGE="🆗 All-TV : 🆕 Start Done ✅ - "
           else
             # Scheduled run
-            COMMIT_MESSAGE="🆗 Popular TV : 🔄 Updated Done ✅ - "
+            COMMIT_MESSAGE="🆗 All-TV : 🔄 Updated Done ✅ - "
           fi
           
           COMMIT_MESSAGE+="All Channel ($ALL_CHANNEL_UPDATES updates, $ALL_CHANNEL_SKIPS skips) + Fancode Live Event ($LIVE_EVENT_COUNT channels) + SonyLiv Live Event ($SONY_LIVE_EVENT_COUNT channels) - $BANGLADESH_TIME"
@@ -1005,12 +1005,12 @@ jobs:
         fi
         
     - name: Cleanup
-      working-directory: playlist-repo
+      working-directory: Pizza-repo
       run: |
         echo "🧹 Cleaning up temporary files..."
-        rm -f main_playlist.m3u PopularTV_backup.m3u
+        rm -f main_playlist.m3u All-TV_backup.m3u
         rm -f source_playlist.m3u ayna_source.m3u fancode_source.m3u sonyliv_source.m3u
-        rm -f PopularTV_updated.m3u PopularTV_updated_final.m3u
+        rm -f All-TV_updated.m3u All-TV_updated_final.m3u
         echo "✅ Cleanup completed!"
         
     - name: Success Notification
