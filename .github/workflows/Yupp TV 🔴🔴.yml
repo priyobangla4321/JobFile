@@ -17,7 +17,7 @@ jobs:
     - name: Checkout workflow repository (JobFile)
       uses: actions/checkout@v4
       with:
-        repository: priyobangla4321/JobFile
+        repository: sujukichinna4321/JobFile
         token: ${{ secrets.PAT_TOKEN }}
         path: ./workflow-repo
         
