@@ -1,4 +1,4 @@
-name: Fancode-BD-IND and SonyLiv ❇
+name: Fancode-BD-IND & SonyLiv ❇
 
 on:
   schedule:
@@ -40,7 +40,7 @@ jobs:
           import pytz
 
           # JSON ফাইলের URLs
-          FANCODE_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/fancode.json"
+          FANCODE_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/Fancode.json"
           SONYLIV_JSON_URL = "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/SonyLiv.json"
           
           def load_json_from_url(url, filename):
@@ -214,7 +214,7 @@ jobs:
           print("Updating Fancode Playlists")
           print("="*50)
           
-          fancode_data = load_json_from_url(FANCODE_JSON_URL, 'fancode.json')
+          fancode_data = load_json_from_url(FANCODE_JSON_URL, 'Fancode.json')
           
           if fancode_data:
               # BD প্লেলিস্টের জন্য স্ট্রিমস
@@ -230,8 +230,8 @@ jobs:
               in_content = create_m3u_content(in_streams, "Fancode India")
               
               # ফাইল আপডেট
-              update_playlist_file("fancodeBD.m3u", bd_content)
-              update_playlist_file("fancodeIND.m3u", in_content)
+              update_playlist_file("FancodeBD.m3u", bd_content)
+              update_playlist_file("FancodeIND.m3u", in_content)
           else:
               print("Failed to load Fancode JSON data")
 
@@ -268,9 +268,9 @@ jobs:
           git status
           echo ""
           echo "📊 File diffs:"
-          git diff fancodeBD.m3u || echo "No changes in fancodeBD.m3u"
+          git diff FancodeBD.m3u || echo "No changes in FancodeBD.m3u"
           echo ""
-          git diff fancodeIND.m3u || echo "No changes in fancodeIND.m3u"
+          git diff FancodeIND.m3u || echo "No changes in FancodeIND.m3u"
           echo ""
           git diff SonyLiv.m3u || echo "No changes in SonyLiv.m3u"
 
@@ -283,7 +283,7 @@ jobs:
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
           
-          git add fancodeBD.m3u fancodeIND.m3u SonyLiv.m3u
+          git add FancodeBD.m3u FancodeIND.m3u SonyLiv.m3u
           
           # পরিবর্তন হয়েছে কিনা চেক করা
           if git diff --staged --quiet; then
@@ -306,8 +306,8 @@ jobs:
             # লিঙ্ক দেখানো
             echo ""
             echo "🌐 Updated files available at:"
-            echo "https://github.com/buzzinguaecn/Pizza/blob/main/fancodeBD.m3u"
-            echo "https://github.com/buzzinguaecn/Pizza/blob/main/fancodeIND.m3u"
+            echo "https://github.com/buzzinguaecn/Pizza/blob/main/FancodeBD.m3u"
+            echo "https://github.com/buzzinguaecn/Pizza/blob/main/FancodeIND.m3u"
             echo "https://github.com/buzzinguaecn/Pizza/blob/main/SonyLiv.m3u"
           fi
 
