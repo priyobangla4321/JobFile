@@ -32,7 +32,7 @@ jobs:
         # Source playlists
         curl -s -L -o source_playlist.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/gh-pages/PopularTV.m3u"
         curl -s -L -o ayna_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/Ayna.m3u"
-        curl -s -L -o fancode_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizzat/main/fancodeBD.m3u"
+        curl -s -L -o fancode_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/fancodeBD.m3u"
         curl -s -L -o sonyliv_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/SonyLiv.m3u"
         
         # Verify downloads
