@@ -19,12 +19,12 @@ jobs:
         token: ${{ secrets.PAT_TOKEN }}
         path: ./workflow-repo
 
-    - name: Checkout playlist repository (buzzinguaecn/Pizza)
+    - name: Checkout Pizza repository (buzzinguaecn/Pizza)
       uses: actions/checkout@v4
       with:
         repository: buzzinguaecn/Pizza
         token: ${{ secrets.PAT_TOKEN }}
-        path: ./playlist-repo
+        path: ./Pizza-repo
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -135,7 +135,7 @@ jobs:
         }
         
         # ফাইল সেভ
-        output_file = 'playlist-repo/fancode.json'
+        output_file = 'Pizza-repo/Fancode.json'
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(updated_data, f, indent=4, ensure_ascii=False)
         
@@ -206,7 +206,7 @@ jobs:
         }
         
         # SonyLiv ফাইল সেভ
-        sony_output_file = 'playlist-repo/SonyLiv.json'
+        sony_output_file = 'Pizza-repo/SonyLiv.json'
         with open(sony_output_file, 'w', encoding='utf-8') as f:
             json.dump(updated_sony_data, f, indent=4, ensure_ascii=False)
         
@@ -229,14 +229,14 @@ jobs:
       shell: python
 
     - name: Check changes
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         echo "🔍 Checking git status..."
         git status
         
         echo ""
-        echo "📊 Checking for old URL pattern in fancode.json:"
-        if grep -n "dai-partner.fancode.com/primary" fancode.json; then
+        echo "📊 Checking for old URL pattern in Fancode.json:"
+        if grep -n "dai-partner.fancode.com/primary" Fancode.json; then
           echo "❌ ERROR: Old URL pattern still exists!"
           exit 1
         else
@@ -244,8 +244,8 @@ jobs:
         fi
         
         echo ""
-        echo "📊 Checking for new URL pattern in fancode.json:"
-        grep -n "bd-mc-fblive.fancode.com/mumbai" fancode.json | head -5
+        echo "📊 Checking for new URL pattern in Fancode.json:"
+        grep -n "bd-mc-fblive.fancode.com/mumbai" Fancode.json | head -5
         
         echo ""
         echo "📊 SonyLiv.json content check:"
@@ -257,12 +257,12 @@ jobs:
         grep -c '"match_name"' SonyLiv.json || echo "0 matches found"
 
     - name: Commit and push changes
-      working-directory: ./playlist-repo
+      working-directory: ./Pizza-repo
       run: |
         git config --local user.email "actions@github.com"
         git config --local user.name "GitHub Actions"
         
-        git add fancode.json SonyLiv.json
+        git add Fancode.json SonyLiv.json
         
         if git diff --staged --quiet; then
           echo "🟡 No changes to commit"
@@ -284,4 +284,4 @@ jobs:
       if: always()
       run: |
         rm -rf workflow-repo
-        rm -rf playlist-repo
+        rm -rf Pizza-repo
