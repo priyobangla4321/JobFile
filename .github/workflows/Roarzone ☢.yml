@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # ধাপ ১: বর্তমান workflow রিপো চেকআউট (priyobangla4321/JobFile)
+      # ধাপ ১: বর্তমান workflow রিপো চেকআউট (sujukichinna4321/JobFile)
       - name: Checkout workflow repository (JobFile)
         uses: actions/checkout@v4
         with:
-          repository: priyobangla4321/JobFile
+          repository: sujukichinna4321/JobFile
           token: ${{ secrets.PAT_TOKEN }}
           path: ./workflow-repo
           
