@@ -377,7 +377,7 @@ jobs:
             timestamp = get_bangladesh_time()
             
             # সব গ্রুপের জন্য combined section তৈরি করা
-            new_combined_section = f"#✅Pizza TV Sports - 🟢 Groups UPDATED - 🟢- {timestamp}\n"
+            new_combined_section = f"#✅ Sports-All - 🟢 Groups UPDATED - 🟢- {timestamp}\n"
             
             total_channels = 0
             has_any_channels = False
@@ -668,16 +668,16 @@ jobs:
         # প্রথম রানের জন্য বিশেষ commit message
         if [ ! -f "Sports-All.m3u" ] || [ ! -s "Sports-All.m3u" ]; then
           # ফাইল না থাকলে বা খালি থাকলে প্রথম রান হিসেবে বিবেচনা করা হবে
-          COMMIT_MESSAGE="🆗 Pizza TV Sports : 🆕 Start 🆕 - "
+          COMMIT_MESSAGE="🆗  Sports-All : 🆕 Start 🆕 - "
           COMMIT_MESSAGE+="All Channel ($ALL_CHANNEL_UPDATES updates, $ALL_CHANNEL_SKIPS skips) + Live Event ($LIVE_EVENT_COUNT channels) - $BANGLADESH_TIME"
           
         elif [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
           # Manual run
-          COMMIT_MESSAGE="🆗 Pizza TV Sports : 🆕 Start Done ✅ - "
+          COMMIT_MESSAGE="🆗  Sports-All : 🆕 Start Done ✅ - "
           COMMIT_MESSAGE+="All Channel ($ALL_CHANNEL_UPDATES updates, $ALL_CHANNEL_SKIPS skips) + Live Event ($LIVE_EVENT_COUNT channels) - $BANGLADESH_TIME"
         else
           # Scheduled run
-          COMMIT_MESSAGE="🆗 Pizza TV Sports : 🔄 Updated Done ✅ - "
+          COMMIT_MESSAGE="🆗  Sports-All : 🔄 Updated Done ✅ - "
           COMMIT_MESSAGE+="All Channel ($ALL_CHANNEL_UPDATES updates, $ALL_CHANNEL_SKIPS skips) + Live Event ($LIVE_EVENT_COUNT channels) - $BANGLADESH_TIME"
         fi
         
