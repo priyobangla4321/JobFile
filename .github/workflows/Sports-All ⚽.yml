@@ -1,4 +1,4 @@
-name: Popular Sports ⚽
+name: Sports-All ⚽
 
 on:
   schedule:
@@ -16,7 +16,7 @@ jobs:
     - name: Checkout workflow repository (JobFile)
       uses: actions/checkout@v4
       with:
-        repository: priyobangla4321/JobFile
+        repository: sujukichinna4321/JobFile
         token: ${{ secrets.PAT_TOKEN }}
         path: ./workflow-repo
         fetch-depth: 0
@@ -38,9 +38,9 @@ jobs:
         echo "" > main_playlist.m3u
         
         # Source playlists
-        curl -s -L -o source_playlist.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/gh-pages/Pizza-Sports.m3u"
+        curl -s -L -o source_playlist.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/gh-pages/Sports-All.m3u"
         curl -s -L -o ayna_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/Ayna.m3u"
-        curl -s -L -o fancode_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/fancodeBD.m3u"
+        curl -s -L -o fancode_source.m3u "https://raw.githubusercontent.com/buzzinguaecn/Pizza/main/FancodeBD.m3u"
         
         # Verify downloads
         for file in source_playlist.m3u ayna_source.m3u fancode_source.m3u; do
